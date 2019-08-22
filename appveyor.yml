@@ -143,6 +143,8 @@ install:
     - sh: pippo
     - sh: sudo apt-get install libxxf86vm-dev -y
     - sh: sudo apt-get install libglu1-mesa-dev freeglut3-dev mesa-common-dev -y
+    - sh: Start-FileDownload 'http://bitbucket.org/eigen/eigen/get/3.3.7.zip'
+    - sh: 7z x 3.3.7.zip -o~/ -y
     # had issues manually sompiling shared irrlicht
     #- ps: Start-FileDownload 'http://downloads.sourceforge.net/irrlicht/irrlicht-1.8.2.zip'
     #- ps: 7z x irrlicht-1.8.2.zip -oIRR -y
@@ -169,9 +171,9 @@ install:
 
     - sh: conda config --add channels https://conda.anaconda.org/conda-forge
     - sh: conda config --add channels https://conda.anaconda.org/intel
-    - sh: conda install -c conda-forge -c dlr-sc -c pythonocc -c oce -c 3dhubs oce==0.18.2 --yes
+    #- sh: conda install -c conda-forge -c dlr-sc -c pythonocc -c oce -c 3dhubs oce==0.18.2 --yes
     #- sh: conda install -c cadquery pythonocc-core --yes
-    - sh: conda install -c intel mkl-devel --yes
+    #- sh: conda install -c intel mkl-devel --yes
 
 build: off
 
