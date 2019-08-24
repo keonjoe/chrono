@@ -183,7 +183,8 @@ test_script:
   - sh: conda build ./contrib/packaging-python/conda --no-remove-work-dir --dirty
   - sh: mkdir dist
   - sh: cp  /home/appveyor/miniconda3/envs/myenv/conda-bld/linux-$PYTHON_ARCH/pychrono*.bz2 ./dist/pychrono.tar.bz
-  - sh: anaconda -t $BINSTAR_TOKEN upload /home/appveyor/miniconda3/envs/myenv/conda-bld/linux-$PYTHON_ARCH/pychrono*.bz2 -l $APPVEYOR_REPO_BRANCH --force
+  #- sh: anaconda -t $BINSTAR_TOKEN upload /home/appveyor/miniconda3/envs/myenv/conda-bld/linux-$PYTHON_ARCH/pychrono*.bz2 -l $APPVEYOR_REPO_BRANCH --force
+  - sh: anaconda -t $BINSTAR_TOKEN upload /home/appveyor/miniconda3/envs/myenv/conda-bld/linux-$PYTHON_ARCH/pychrono*.bz2 -l develop --force
   
   
 ##################################################### WINDOWS ###########################################
@@ -208,7 +209,8 @@ for:
         - cmd: 'mkdir dist'
         - cmd: 'copy /Y %CONDA_INSTALL_LOCN%\conda-bld\win-%PYTHON_ARCH%\pychrono*.bz2 dist || cmd /c "exit /b 0"'
   # upload package to anaconda$
-        - ps: cmd /C anaconda --token $env:BINSTAR_TOKEN upload  dist\*.bz2 -l $env:APPVEYOR_REPO_BRANCH --force "2>&1"
+        #- ps: cmd /C anaconda --token $env:BINSTAR_TOKEN upload  dist\*.bz2 -l $env:APPVEYOR_REPO_BRANCH --force "2>&1"
+        - ps: cmd /C anaconda --token $env:BINSTAR_TOKEN upload  dist\*.bz2 -l develop --force "2>&1"
 
 artifacts:
   - path: dist\*
