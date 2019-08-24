@@ -123,12 +123,10 @@ install:
     #- cmd: conda update conda
     #- cmd: set "PATH=%OLDPATH%"
     - cmd: call %CONDA_INSTALL_LOCN%\Scripts\activate.bat
-    - cmd: conda create -n myenv python=%PYTHON_VERSION% -y 
     - cmd: conda config --set show_channel_urls true
     #- cmd: conda update conda --yes
     - cmd: conda install -c anaconda conda=%CONDAVER% --yes    
     - cmd: conda install conda-build anaconda-client --yes
-    - cmd: activate myenv
     - cmd: conda config --add channels https://conda.anaconda.org/conda-forge
     - cmd: conda config --add channels https://conda.anaconda.org/intel
     # need to manually add non standard channels.
@@ -157,10 +155,7 @@ install:
     - sh: wget "http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh"
     - sh: bash Miniconda3-latest-Linux-x86_64.sh -b
     - sh: export PATH=$HOME/miniconda3/bin:$PATH
-    # Downgrading Conda leads to issues in Linux. We create specific environment "myenv" instead
-    - sh: conda create -n myenv python=$PYTHON_VERSION -y
     - sh: conda update --yes conda
-    - sh: source activate myenv
     - sh: conda install --yes pip jinja2
     - sh: conda config --set show_channel_urls true
     #- sh: conda install conda-build=3.17.5 anaconda-client=1.5.5 conda-verify --yes
@@ -180,11 +175,11 @@ test_script:
 
 ##################################################### UBUNTU #####################################
   # builds conda package following recipe instructions
-  - sh: conda build ./contrib/packaging-python/conda --no-remove-work-dir --dirty
+  - sh: conda build ./contrib/packaging-python/conda --no-remove-work-dir --dirty --python=$env:PYTHON_VERSION
   - sh: mkdir dist
-  - sh: cp  /home/appveyor/miniconda3/envs/myenv/conda-bld/linux-$PYTHON_ARCH/pychrono*.bz2 ./dist/pychrono.tar.bz
-  #- sh: anaconda -t $BINSTAR_TOKEN upload /home/appveyor/miniconda3/envs/myenv/conda-bld/linux-$PYTHON_ARCH/pychrono*.bz2 -l $APPVEYOR_REPO_BRANCH --force
-  - sh: anaconda -t $BINSTAR_TOKEN upload /home/appveyor/miniconda3/envs/myenv/conda-bld/linux-$PYTHON_ARCH/pychrono*.bz2 -l develop --force
+  - sh: cp  /home/appveyor/miniconda3/conda-bld/linux-$PYTHON_ARCH/pychrono*.bz2 ./dist/pychrono.tar.bz
+  #- sh: anaconda -t $BINSTAR_TOKEN upload /home/appveyor/miniconda3/conda-bld/linux-$PYTHON_ARCH/pychrono*.bz2 -l $APPVEYOR_REPO_BRANCH --force
+  - sh: anaconda -t $BINSTAR_TOKEN upload /home/appveyor/miniconda3/conda-bld/linux-$PYTHON_ARCH/pychrono*.bz2 -l develop --force
   
   
 ##################################################### WINDOWS ###########################################
@@ -204,7 +199,7 @@ for:
       only:
         -  APPVEYOR_BUILD_WORKER_IMAGE: Visual Studio 2017
     test_script:
-        - "%CMD_IN_ENV% conda build .\\contrib\\packaging-python\\conda --no-remove-work-dir --dirty"
+        - "%CMD_IN_ENV% conda build .\\contrib\\packaging-python\\conda --no-remove-work-dir --dirty --python=%PYTHON_VERSION%"
   # move conda package to /dist
         - cmd: 'mkdir dist'
         - cmd: 'copy /Y %CONDA_INSTALL_LOCN%\conda-bld\win-%PYTHON_ARCH%\pychrono*.bz2 dist || cmd /c "exit /b 0"'
