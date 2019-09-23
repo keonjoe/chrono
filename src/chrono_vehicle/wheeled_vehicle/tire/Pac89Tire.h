@@ -12,33 +12,40 @@
 // Authors: Radu Serban, Michael Taylor
 // =============================================================================
 //
-// HMMWV PAC89 tire subsystem
+// JSON PAC89 tire subsystem
 //
 // =============================================================================
 
-#ifndef HMMWV_PAC89_TIRE_H
-#define HMMWV_PAC89_TIRE_H
+#ifndef PAC89_TIRE_H
+#define PAC89_TIRE_H
 
-#include "chrono/assets/ChTriangleMeshShape.h"
 
 #include "chrono_vehicle/wheeled_vehicle/tire/ChPac89Tire.h"
+#include "chrono_vehicle/ChApiVehicle.h"
+#include "chrono/assets/ChTriangleMeshShape.h"
 
-#include "chrono_models/ChApiModels.h"
+#include "chrono_thirdparty/rapidjson/document.h"
 
 namespace chrono {
 namespace vehicle {
-namespace hmmwv {
 
 /// @addtogroup vehicle_models_hmmwv
 /// @{
 
-/// PAC89 tire model for the HMMWV vehicle.
-class CH_MODELS_API HMMWV_Pac89Tire : public ChPac89Tire {
+/// PAC89 tire model from JSON file.
+class CH_VEHICLE_API Pac89Tire : public ChPac89Tire {
   public:
-    HMMWV_Pac89Tire(const std::string& name);
-    ~HMMWV_Pac89Tire() {}
+    Pac89Tire(const std::string& filename);
+    Pac89Tire(const rapidjson::Document& d);
+    ~Pac89Tire() {}
 
-    virtual double GetNormalStiffnessForce(double depth) const override;
+    virtual double GetNormalStiffnessForce(double depth) const override {
+        if (m_has_vert_table) {
+            return m_vert_map.Get_y(depth);
+        } else {
+            return m_normalStiffness * depth;
+        }
+    }
     virtual double GetNormalDampingForce(double depth, double velocity) const override {
         return m_normalDamping * velocity;
     }
@@ -46,28 +53,33 @@ class CH_MODELS_API HMMWV_Pac89Tire : public ChPac89Tire {
     virtual double GetMass() const override { return m_mass; }
     virtual ChVector<> GetInertia() const override { return m_inertia; }
 
-    virtual double GetVisualizationWidth() const override { return m_width; }
+    virtual double GetVisualizationWidth() const override { return m_visualization_width; }
 
-    virtual void SetPac89Params() override;
+    virtual void SetPac89Params() override { m_measured_side = LEFT; }
 
     virtual void AddVisualizationAssets(VisualizationType vis) override;
     virtual void RemoveVisualizationAssets() override final;
 
   private:
-    static const double m_normalDamping;
-    static const double m_mass;
-    static const ChVector<> m_inertia;
+    virtual void Create(const rapidjson::Document& d) override;
+
+    double m_normalStiffness;
+    double m_normalDamping;
+    double m_mass;
+    ChVector<> m_inertia;
+    bool m_has_mesh;
+    bool m_has_vert_table;
     ChFunction_Recorder m_vert_map;
 
-    static const std::string m_meshName;
-    static const std::string m_meshFile;
+    double m_visualization_width;
+    std::string m_meshName;
+    std::string m_meshFile;
     std::shared_ptr<ChTriangleMeshShape> m_trimesh_shape;
 };
 
 /// @} vehicle_models_hmmwv
 
-}  // end namespace hmmwv
-}  // end namespace vehicle
+}  // namespace vehicle
 }  // end namespace chrono
 
 #endif
