@@ -17,7 +17,7 @@
 // =============================================================================
 
 #include "chrono/physics/ChSystemNSC.h"
-#include "chrono/solver/ChSolverMINRES.h"
+#include "chrono/solver/ChIterativeSolverLS.h"
 
 #include "chrono/fea/ChElementSpring.h"
 #include "chrono/fea/ChElementTetra_4.h"
@@ -91,16 +91,13 @@ void test_1() {
     // Set no gravity
     // my_system.Set_G_acc(VNULL);
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // Perform a linear static analysis
-    my_system.SetSolverType(ChSolver::Type::MINRES);
-    auto msolver = std::static_pointer_cast<ChSolverMINRES>(my_system.GetSolver());
-    msolver->SetDiagonalPreconditioning(true);
-    msolver->SetVerbose(true);
-    my_system.SetMaxItersSolverSpeed(40);
-    my_system.SetTolForce(1e-10);
+    auto solver = chrono_types::make_shared<ChSolverMINRES>();
+    my_system.SetSolver(solver);
+    solver->SetMaxIterations(40);
+    solver->SetTolerance(1e-10);
+    solver->EnableDiagonalPreconditioner(true);
+    solver->SetVerbose(true);
 
     my_system.DoStaticLinear();
 
@@ -190,16 +187,13 @@ void test_2() {
     // Set no gravity
     // my_system.Set_G_acc(VNULL);
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // Perform a linear static analysis
-    my_system.SetSolverType(ChSolver::Type::MINRES);
-    auto msolver = std::static_pointer_cast<ChSolverMINRES>(my_system.GetSolver());
-    msolver->SetDiagonalPreconditioning(true);
-    msolver->SetVerbose(true);
-    my_system.SetMaxItersSolverSpeed(100);
-    my_system.SetTolForce(1e-10);
+    auto solver = chrono_types::make_shared<ChSolverMINRES>();
+    my_system.SetSolver(solver);
+    solver->SetMaxIterations(100);
+    solver->SetTolerance(1e-10);
+    solver->EnableDiagonalPreconditioner(true);
+    solver->SetVerbose(true);
 
     my_system.DoStaticLinear();
 
@@ -306,16 +300,13 @@ void test_3() {
     // Set no gravity
     // my_system.Set_G_acc(VNULL);
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // Perform a linear static analysis
-    my_system.SetSolverType(ChSolver::Type::MINRES);
-    auto msolver = std::static_pointer_cast<ChSolverMINRES>(my_system.GetSolver());
-    msolver->SetDiagonalPreconditioning(true);
-    msolver->SetVerbose(true);
-    my_system.SetMaxItersSolverSpeed(100);
-    my_system.SetTolForce(1e-12);
+    auto solver = chrono_types::make_shared<ChSolverMINRES>();
+    my_system.SetSolver(solver);
+    solver->SetMaxIterations(100);
+    solver->SetTolerance(1e-12);
+    solver->EnableDiagonalPreconditioner(true);
+    solver->SetVerbose(true);
 
     my_system.DoStaticLinear();
 
@@ -426,16 +417,13 @@ void test_4() {
     // Set no gravity
     // my_system.Set_G_acc(VNULL);
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // Perform a linear static analysis
-    my_system.SetSolverType(ChSolver::Type::MINRES);
-    auto msolver = std::static_pointer_cast<ChSolverMINRES>(my_system.GetSolver());
-    msolver->SetDiagonalPreconditioning(true);
-    msolver->SetVerbose(true);
-    my_system.SetMaxItersSolverSpeed(100);
-    my_system.SetTolForce(1e-12);
+    auto solver = chrono_types::make_shared<ChSolverMINRES>();
+    my_system.SetSolver(solver);
+    solver->SetMaxIterations(100);
+    solver->SetTolerance(1e-12);
+    solver->EnableDiagonalPreconditioner(true);
+    solver->SetVerbose(true);
 
     my_system.DoStaticLinear();
 
@@ -582,16 +570,13 @@ void test_5() {
     // Set no gravity
     // my_system.Set_G_acc(VNULL);
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // Perform a linear static analysis
-    my_system.SetSolverType(ChSolver::Type::MINRES);
-    auto msolver = std::static_pointer_cast<ChSolverMINRES>(my_system.GetSolver());
-    msolver->SetDiagonalPreconditioning(true);
-    msolver->SetVerbose(true);
-    my_system.SetMaxItersSolverSpeed(100);
-    my_system.SetTolForce(1e-12);
+    auto solver = chrono_types::make_shared<ChSolverMINRES>();
+    my_system.SetSolver(solver);
+    solver->SetMaxIterations(100);
+    solver->SetTolerance(1e-12);
+    solver->EnableDiagonalPreconditioner(true);
+    solver->SetVerbose(true);
 
     my_system.DoStaticLinear();
 

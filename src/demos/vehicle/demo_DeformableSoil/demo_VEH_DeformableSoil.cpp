@@ -18,7 +18,6 @@
 #include "chrono/physics/ChLinkMotorRotationAngle.h"
 #include "chrono/physics/ChLoadContainer.h"
 #include "chrono/physics/ChSystemSMC.h"
-#include "chrono/solver/ChSolverMINRES.h"
 #include "chrono/utils/ChUtilsInputOutput.h"
 
 #include "chrono_irrlicht/ChIrrApp.h"
@@ -174,9 +173,6 @@ int main(int argc, char* argv[]) {
 
     // Use shadows in realtime view
     application.AddShadowAll();
-
-    // ==IMPORTANT!== Mark completion of system construction
-    my_system.SetupInitial();
 
     //
     // THE SOFT-REAL-TIME CYCLE

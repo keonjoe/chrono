@@ -12,7 +12,7 @@
 // Authors: Radu Serban, Asher Elmquist, Evan Hoerl
 // =============================================================================
 //
-// Base class for the WVP vehicle models
+// Base class for the Citybus vehicle models
 //
 // =============================================================================
 
@@ -44,6 +44,10 @@ namespace chrono {
 namespace vehicle {
 namespace citybus {
 
+/// @addtogroup vehicle_models_citybus
+/// @{
+
+/// Bus model with two axles and double tires on rear axle.
 class CH_MODELS_API CityBus_Vehicle : public ChWheeledVehicle {
   public:
     CityBus_Vehicle(const bool fixed = false,
@@ -66,13 +70,13 @@ class CH_MODELS_API CityBus_Vehicle : public ChWheeledVehicle {
         m_omega = omega;
     }
 
-    double GetSpringForce(const WheelID& wheel_id) const;
-    double GetSpringLength(const WheelID& wheel_id) const;
-    double GetSpringDeformation(const WheelID& wheel_id) const;
+    double GetSpringForce(int axle, VehicleSide side) const;
+    double GetSpringLength(int axle, VehicleSide side) const;
+    double GetSpringDeformation(int axle, VehicleSide side) const;
 
-    double GetShockForce(const WheelID& wheel_id) const;
-    double GetShockLength(const WheelID& wheel_id) const;
-    double GetShockVelocity(const WheelID& wheel_id) const;
+    double GetShockForce(int axle, VehicleSide side) const;
+    double GetShockLength(int axle, VehicleSide side) const;
+    double GetShockVelocity(int axle, VehicleSide side) const;
 
     virtual void Initialize(const ChCoordsys<>& chassisPos, double chassisFwdVel = 0) override;
 
@@ -85,6 +89,8 @@ class CH_MODELS_API CityBus_Vehicle : public ChWheeledVehicle {
 
     std::vector<double> m_omega;
 };
+
+/// @} vehicle_models_citybus
 
 }  // end namespace citybus
 }  // end namespace vehicle

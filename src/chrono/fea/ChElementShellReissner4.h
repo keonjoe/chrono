@@ -31,27 +31,36 @@ namespace fea {
 /// @addtogroup fea_elements
 /// @{
 
-/// Shell with geometrically exact kinematics, with 4 nodes.
-/// Uses ANS to avoid shear locking.
-/// Based on the paper:
-/// "Implementation and validation of a 4-node shell finite element"
-/// Marco Morandini, Pierangelo Masarati.  IDETC/CIE 2014.
+/// Laminated thick shell with geometrically exact kinematics, with 4 nodes.
+/// It generalizes the Reissner thick shell theory (in fact each layer requires 
+/// a ChMaterialShellReissner) by using the Chroscielewski 6-dof field shell theory
+/// as discussed in:
+///
+/// Wojciech Witkowski, "4-Node combined shell element with semi-EAS-ANS strain interpolations 
+/// in 6-parameter shell theories with drilling degrees of freedom", Comp.Mech 2009.
+/// 
+/// This specific implementation is based on the paper:
+///
+/// Marco Morandini, Pierangelo Masarati, "Implementation and validation of 
+/// a 4-node shell finite element", IDETC/CIE 2014.
 ///
 /// The node numbering is in ccw fashion as in the following scheme:
+/// <pre>
 ///         v
 ///         ^
+///         |
 /// D o-----+-----o C
 ///   |     |     |
-/// --+-----+-----+-> u
+/// --+-----+-----+----> u
 ///   |     |     |
 /// A o-----+-----o B
-///
+/// </pre>
 class ChApi ChElementShellReissner4 : public ChElementShell, public ChLoadableUV, public ChLoadableUVW {
   public:
     using ShapeVector = ChMatrixNM<double, 1, 4>;
 
     ChElementShellReissner4();
-    virtual ~ChElementShellReissner4();
+    ~ChElementShellReissner4();
 
     /// Definition of a layer
     class Layer {
@@ -187,6 +196,11 @@ class ChApi ChElementShellReissner4 : public ChElementShell, public ChLoadableUV
     virtual unsigned int iGetNumDof(void) const { return 7; };
 
   private:
+    /// Initial setup.
+    /// This is used mostly to precompute matrices that do not change during the simulation,
+    /// such as the local stiffness of each element (if any), the mass, etc.
+    virtual void SetupInitial(ChSystem* system) override;
+
     void UpdateNodalAndAveragePosAndOrientation();
     void ComputeInitialNodeOrientation();
     void InterpolateOrientation();
@@ -363,7 +377,7 @@ class ChApi ChElementShellReissner4 : public ChElementShell, public ChLoadableUV
     ChVectorN<double, 12> epsilon;
 
     // Reference constitutive law tangent matrices
-    ChMatrixNM<double, 12, 12> DRef[NUMIP];
+    //ChMatrixNM<double, 12, 12> DRef[NUMIP];
 
     // stress
     ChVectorN<double, 12> stress_i[NUMIP];
@@ -397,11 +411,6 @@ class ChApi ChElementShellReissner4 : public ChElementShell, public ChLoadableUV
     /// Computes the internal forces.
     /// (E.g. the actual position of nodes is not in relaxed reference position) and set values in the Fi vector.
     virtual void ComputeInternalForces(ChVectorDynamic<>& Fi) override;
-
-    /// Initial setup.
-    /// This is used mostly to precompute matrices that do not change during the simulation,
-    /// such as the local stiffness of each element (if any), the mass, etc.
-    virtual void SetupInitial(ChSystem* system) override;
 
     /// Update the state of this element.
     virtual void Update() override;

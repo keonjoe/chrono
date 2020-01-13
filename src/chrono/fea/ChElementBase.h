@@ -27,12 +27,16 @@ namespace fea {
 /// @addtogroup fea_elements
 /// @{
 
+struct ChStrainStress3D {
+    ChVectorN<double, 6> strain;
+    ChVectorN<double, 6> stress;
+};
+
 /// Base class for all finite elements, that can be used in the ChMesh physics item.
 class ChApi ChElementBase {
-  protected:
   public:
-    ChElementBase(){};
-    virtual ~ChElementBase(){};
+    ChElementBase() {}
+    virtual ~ChElementBase() {}
 
     /// Gets the number of nodes used by this element.
     virtual int GetNnodes() = 0;
@@ -75,11 +79,6 @@ class ChApi ChElementBase {
     /// values in the Fi vector, with n.rows = n.of dof of element.
     virtual void ComputeInternalForces(ChVectorDynamic<>& Fi) = 0;
 
-    /// Initial setup: This is used mostly to precompute matrices
-    /// that do not change during the simulation, i.e. the local
-    /// stiffness of each element, if any, the mass, etc.
-    virtual void SetupInitial(ChSystem* system) {}
-
     /// Update: this is called at least at each time step. If the
     /// element has to keep updated some auxiliary data, such as the rotation
     /// matrices for corotational approach, this is the proper place.
@@ -91,7 +90,7 @@ class ChApi ChElementBase {
 
 	/// This is optionally implemented if there is some internal state
 	/// that requires integration.
-	virtual void EleDoIntegration() {};
+	virtual void EleDoIntegration() {}
 
     /// Adds the internal forces (pasted at global nodes offsets) into
     /// a global vector R, multiplied by a scaling factor c, as
@@ -127,6 +126,13 @@ class ChApi ChElementBase {
     /// timestepping schemes that do: M*v_new = M*v_old + forces*dt
     /// WILL BE DEPRECATED
     virtual void VariablesFbIncrementMq() {}
+
+  private:
+    /// Initial setup: This is used mostly to precompute matrices that do not change during the simulation, i.e. the
+    /// local stiffness of each element, if any, the mass, etc.
+    virtual void SetupInitial(ChSystem* system) {}
+
+	friend class ChMesh;
 };
 
 /// @} fea_elements

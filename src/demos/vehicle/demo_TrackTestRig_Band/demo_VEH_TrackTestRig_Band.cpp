@@ -175,7 +175,7 @@ int main(int argc, char* argv[]) {
     ////ChVector<> target_point = rig->GetTrackAssembly()->GetIdler()->GetWheelBody()->GetPos();
     ChVector<> target_point = rig->GetTrackAssembly()->GetSprocket()->GetGearBody()->GetPos();
 
-    ChVehicleIrrApp app(rig, NULL, L"Continuous Band Track Test Rig");
+    ChVehicleIrrApp app(rig, L"Continuous Band Track Test Rig");
     app.SetSkyBox();
     irrlicht::ChIrrWizard::add_typical_Logo(app.GetDevice());
     app.AddTypicalLights(irr::core::vector3df(30.f, -30.f, 100.f), irr::core::vector3df(30.f, 50.f, 100.f), 250, 130);
@@ -255,7 +255,7 @@ int main(int argc, char* argv[]) {
 #ifdef CHRONO_MUMPS
         case MUMPS: {
             auto mumps_solver = chrono_types::make_shared<ChSolverMumps>();
-            mumps_solver->SetSparsityPatternLock(true);
+            mumps_solver->LockSparsityPattern(true);
             mumps_solver->SetVerbose(verbose_solver);
             rig->GetSystem()->SetSolver(mumps_solver);
             break;
@@ -263,8 +263,8 @@ int main(int argc, char* argv[]) {
 #endif
 #ifdef CHRONO_MKL
         case MKL: {
-            auto mkl_solver = chrono_types::make_shared<ChSolverMKL<>>();
-            mkl_solver->SetSparsityPatternLock(true);
+            auto mkl_solver = chrono_types::make_shared<ChSolverMKL>();
+            mkl_solver->LockSparsityPattern(true);
             mkl_solver->SetVerbose(verbose_solver);
             rig->GetSystem()->SetSolver(mkl_solver);
             break;
@@ -282,9 +282,6 @@ int main(int argc, char* argv[]) {
     integrator->SetModifiedNewton(true);
     integrator->SetScaling(true);
     integrator->SetVerbose(verbose_integrator);
-
-    // IMPORTANT: Mark completion of system construction
-    rig->GetSystem()->SetupInitial();
 
     // -----------------
     // Print model stats
@@ -349,7 +346,7 @@ int main(int argc, char* argv[]) {
         rig->Advance(step_size);
 
         // Update visualization app
-        app.Synchronize(rig->GetDriverMessage(), 0, rig->GetThrottleInput(), 0);
+        app.Synchronize(rig->GetDriverMessage(), { 0, rig->GetThrottleInput(), 0 });
         app.Advance(step_size);
 
         // Parse all contacts in system

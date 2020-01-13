@@ -9,7 +9,7 @@
 // http://projectchrono.org/license-chrono.txt.
 //
 // =============================================================================
-// Authors: Radu Serban, Rainer Gericke
+// Authors: Rainer Gericke
 // =============================================================================
 //
 // A driver model that combines a path steering controller and a speed controller.
@@ -54,18 +54,20 @@ class CH_VEHICLE_API ChHumanDriver : public ChDriver {
                   std::shared_ptr<ChBezierCurve> path,  ///< Bezier curve with target path
                   const std::string& path_name,         ///< name of the path curve
                   bool isClosedPath = false,            ///< Treat the path as a closed loop
-                  double road_width = 5.0,
-                  double max_wheel_turn_angle = 0,
-                  double axle_space = 2.5);
+                  double road_width = 5.0,              ///< road width
+                  double max_wheel_turn_angle = 0,      ///< maximum wheel turning angle
+                  double axle_space = 2.5               ///< wheel track
+    );
     /// Construct using a JSON parameter file
     ChHumanDriver(const std::string& filename,          ///< path of the JSON file
                   ChVehicle& vehicle,                   ///< associated vehicle
                   std::shared_ptr<ChBezierCurve> path,  ///< Bezier curve with target path
                   const std::string& path_name,         ///< name of the path curve
                   bool isClosedPath = false,            ///< Treat the path as a closed loop
-                  double road_width = 5.0,
-                  double max_wheel_turn_angle = 0,
-                  double axle_space = 2.5);
+                  double road_width = 5.0,              ///< road width
+                  double max_wheel_turn_angle = 0,      ///< maximum wheel turning angle
+                  double axle_space = 2.5               ///< wheel track
+    );
     ~ChHumanDriver() {}
 
     /// Advance the state of this driver system by the specified duration.
@@ -120,7 +122,6 @@ class CH_VEHICLE_API ChHumanDriver : public ChDriver {
     double m_Kminus;
     double m_u0;
     double m_umax;
-    double m_udem;
     double m_uthres;
     double m_ny;
     ChVector<> m_target;

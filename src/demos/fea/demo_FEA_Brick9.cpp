@@ -29,8 +29,6 @@
 #include "chrono/physics/ChSystemSMC.h"
 #include "chrono/physics/ChBodyEasy.h"
 
-#include "chrono/solver/ChSolverMINRES.h"
-
 #include "chrono/fea/ChElementBrick_9.h"
 #include "chrono/fea/ChElementShellANCF.h"
 #include "chrono/fea/ChMesh.h"
@@ -296,9 +294,6 @@ void DPCapPress() {
     // Add the mesh to the system
     my_system.Add(my_mesh);
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // -------------------------------------
     // Options for visualization in irrlicht
     // -------------------------------------
@@ -341,10 +336,9 @@ void DPCapPress() {
     application.AssetUpdateAll();
 
     // Use the MKL Solver
-    auto mkl_solver = chrono_types::make_shared<ChSolverMKL<>>();
+    auto mkl_solver = chrono_types::make_shared<ChSolverMKL>();
     my_system.SetSolver(mkl_solver);
-    mkl_solver->SetSparsityPatternLock(true);
-    my_system.Update();
+    mkl_solver->LockSparsityPattern(true);
 
     // Set the time integrator parameters
     my_system.SetTimestepperType(ChTimestepper::Type::HHT);
@@ -357,7 +351,6 @@ void DPCapPress() {
     mystepper->SetScaling(true);
     application.SetTimestep(timestep);
 
-    my_system.Setup();
     my_system.Update();
 
     std::string filename = out_dir + "/DPCapPress.txt";
@@ -650,9 +643,6 @@ void ShellBrickContact() {
     my_system.Set_G_acc(ChVector<>(0.0, 0.0, -9.81));
     my_mesh->SetAutomaticGravity(false);
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // -------------------------------------
     // Options for visualization in irrlicht
     // -------------------------------------
@@ -695,10 +685,9 @@ void ShellBrickContact() {
     application.AssetUpdateAll();
 
     // Use the MKL Solver
-    auto mkl_solver = chrono_types::make_shared<ChSolverMKL<>>();
+    auto mkl_solver = chrono_types::make_shared<ChSolverMKL>();
     my_system.SetSolver(mkl_solver);
-    mkl_solver->SetSparsityPatternLock(true);
-    my_system.Update();
+    mkl_solver->LockSparsityPattern(true);
 
     // Set the time integrator parameters
     my_system.SetTimestepperType(ChTimestepper::Type::HHT);
@@ -711,7 +700,6 @@ void ShellBrickContact() {
     mystepper->SetScaling(true);
     application.SetTimestep(timestep);
 
-    my_system.Setup();
     my_system.Update();
 
     std::string filename = out_dir + "/ShellBrickContact.txt";
@@ -966,9 +954,6 @@ void SimpleBoxContact() {
     my_system.Set_G_acc(ChVector<>(0.0, 0.0, -9.81));
     my_mesh->SetAutomaticGravity(false);
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // -------------------------------------
     // Options for visualization in irrlicht
     // -------------------------------------
@@ -1011,10 +996,9 @@ void SimpleBoxContact() {
     application.AssetUpdateAll();
 
     // Use the MKL Solver
-    auto mkl_solver = chrono_types::make_shared<ChSolverMKL<>>();
+    auto mkl_solver = chrono_types::make_shared<ChSolverMKL>();
     my_system.SetSolver(mkl_solver);
-    mkl_solver->SetSparsityPatternLock(true);
-    my_system.Update();
+    mkl_solver->LockSparsityPattern(true);
 
     // Set the time integrator parameters
     my_system.SetTimestepperType(ChTimestepper::Type::HHT);
@@ -1027,7 +1011,6 @@ void SimpleBoxContact() {
     mystepper->SetScaling(true);
     application.SetTimestep(timestep);
 
-    my_system.Setup();
     my_system.Update();
 
     std::string filename = out_dir + "/SimpleBoxContact.txt";
@@ -1301,9 +1284,6 @@ void SoilBin() {
     my_system.AddLink(constraintLongitudinal);
     constraintLongitudinal->Initialize(Plate, Ground, ChCoordsys<>(Plate->GetPos(), Q_from_AngY(CH_C_PI_2)));
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // -------------------------------------
     // Options for visualization in irrlicht
     // -------------------------------------
@@ -1346,10 +1326,9 @@ void SoilBin() {
     application.AssetUpdateAll();
 
     // Use the MKL Solver
-    auto mkl_solver = chrono_types::make_shared<ChSolverMKL<>>();
+    auto mkl_solver = chrono_types::make_shared<ChSolverMKL>();
     my_system.SetSolver(mkl_solver);
-    mkl_solver->SetSparsityPatternLock(true);
-    my_system.Update();
+    mkl_solver->LockSparsityPattern(true);
 
     // Set the time integrator parameters
     my_system.SetTimestepperType(ChTimestepper::Type::HHT);
@@ -1362,7 +1341,6 @@ void SoilBin() {
     mystepper->SetScaling(true);
     application.SetTimestep(timestep);
 
-    my_system.Setup();
     my_system.Update();
 
     std::string filename = out_dir + "/SoilBin.txt";
@@ -1596,9 +1574,6 @@ void AxialDynamics() {
     my_system.Set_G_acc(ChVector<>(0.0, 0.0, 0.0));
     my_mesh->SetAutomaticGravity(false);
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // -------------------------------------
     // Options for visualization in irrlicht
     // -------------------------------------
@@ -1635,10 +1610,9 @@ void AxialDynamics() {
     // application.AssetUpdateAll();
 
     // Use the MKL Solver
-    auto mkl_solver = chrono_types::make_shared<ChSolverMKL<>>();
+    auto mkl_solver = chrono_types::make_shared<ChSolverMKL>();
     my_system.SetSolver(mkl_solver);
-    mkl_solver->SetSparsityPatternLock(true);
-    my_system.Update();
+    mkl_solver->LockSparsityPattern(true);
 
     // Set the time integrator parameters
     my_system.SetTimestepperType(ChTimestepper::Type::HHT);
@@ -1651,7 +1625,6 @@ void AxialDynamics() {
     mystepper->SetScaling(true);
     // application.SetTimestep(timestep);
 
-    my_system.Setup();
     my_system.Update();
 
     std::string filename = out_dir + "/AxialDynamics.txt";
@@ -1833,9 +1806,6 @@ void BendingQuasiStatic() {
 
     my_system.Set_G_acc(ChVector<>(0.0, 0.0, 0.0));
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     // -------------------------------------
     // Options for visualization in irrlicht
     // -------------------------------------
@@ -1875,18 +1845,10 @@ void BendingQuasiStatic() {
     // Perform a dynamic time integration
     // ----------------------------------
 
-    // Set up solver
-    // my_system.SetSolverType(ChSolver::Type::MINRES);
-    // auto msolver = std::static_pointer_cast<ChSolverMINRES>(my_system.GetSolver());
-    // msolver->SetDiagonalPreconditioning(true);
-    // my_system.SetMaxItersSolverSpeed(100);
-    // my_system.SetTolForce(1e-10);
-
     // Use the MKL Solver
-    auto mkl_solver = chrono_types::make_shared<ChSolverMKL<>>();
+    auto mkl_solver = chrono_types::make_shared<ChSolverMKL>();
     my_system.SetSolver(mkl_solver);
-    mkl_solver->SetSparsityPatternLock(true);
-    my_system.Update();
+    mkl_solver->LockSparsityPattern(true);
 
     // Set the time integrator parameters
     my_system.SetTimestepperType(ChTimestepper::Type::HHT);
@@ -1899,7 +1861,6 @@ void BendingQuasiStatic() {
     mystepper->SetScaling(true);
     application.SetTimestep(timestep);
 
-    my_system.Setup();
     my_system.Update();
 
     std::string filename = out_dir + "/BendingQuasistatic.txt";
@@ -2083,9 +2044,6 @@ void SwingingShell() {
     my_system.Set_G_acc(ChVector<>(0.0, 0.0, -9.81));
     my_mesh->SetAutomaticGravity(false);
 
-    // Mark completion of system construction
-    my_system.SetupInitial();
-
     auto mvisualizemesh = chrono_types::make_shared<ChVisualizationFEAmesh>(*(my_mesh.get()));
     mvisualizemesh->SetFEMdataType(ChVisualizationFEAmesh::E_PLOT_NODE_SPEED_NORM);
     mvisualizemesh->SetColorscaleMinMax(0.0, 5.50);
@@ -2121,18 +2079,10 @@ void SwingingShell() {
     // Perform a dynamic time integration
     // ----------------------------------
 
-    // Set up solver
-    // my_system.SetSolverType(ChSolver::Type::MINRES);
-    // auto msolver = std::static_pointer_cast<ChSolverMINRES>(my_system.GetSolver());
-    // msolver->SetDiagonalPreconditioning(true);
-    // my_system.SetMaxItersSolverSpeed(100);
-    // my_system.SetTolForce(1e-10);
-
     // Use the MKL Solver
-    auto mkl_solver = chrono_types::make_shared<ChSolverMKL<>>();
+    auto mkl_solver = chrono_types::make_shared<ChSolverMKL>();
     my_system.SetSolver(mkl_solver);
-    mkl_solver->SetSparsityPatternLock(true);
-    my_system.Update();
+    mkl_solver->LockSparsityPattern(true);
 
     // Set the time integrator parameters
     my_system.SetTimestepperType(ChTimestepper::Type::HHT);
@@ -2145,7 +2095,6 @@ void SwingingShell() {
     mystepper->SetScaling(true);
     application.SetTimestep(timestep);
 
-    my_system.Setup();
     my_system.Update();
 
     std::string filename = out_dir + "SwingingShell.txt";
