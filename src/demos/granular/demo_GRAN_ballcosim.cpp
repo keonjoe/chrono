@@ -104,7 +104,7 @@ int main(int argc, char* argv[]) {
 
     apiSMC_TriMesh.setElemsPositions(body_points);
 
-    gran_sys.set_BD_Fixed(true);
+    gran_sys.set_BD_Fixed(false);
     std::function<double3(float)> pos_func_wave = [&params](float t) {
         double3 pos = {0, 0, 0};
 
@@ -117,7 +117,7 @@ int main(int argc, char* argv[]) {
         return pos;
     };
 
-    // gran_sys.setBDWallsMotionFunction(pos_func_wave);
+    gran_sys.setBDWallsMotionFunction(pos_func_wave);
 
     gran_sys.set_K_n_SPH2SPH(params.normalStiffS2S);
     gran_sys.set_K_n_SPH2WALL(params.normalStiffS2W);
@@ -246,6 +246,14 @@ int main(int argc, char* argv[]) {
             outstream << "mesh_name,dx,dy,dz,x1,x2,x3,y1,y2,y3,z1,z2,z3,sx,sy,sz\n";
             writeMeshFrames(outstream, *ball_body, mesh_filename, ball_radius);
             meshfile << outstream.str();
+
+            std::ofstream Forces("ball_force.csv");
+            Forces << ball_force[0] << "," << ball_force[1] << "," << ball_force[2] << "\n";
+            Forces.close();
+
+            std::ofstream Torques("ball_torque.csv");
+            Torques << ball_force[3] << "," << ball_force[4] << "," << ball_force[5] << "\n";
+            Torques.close();
         }
     }
 
