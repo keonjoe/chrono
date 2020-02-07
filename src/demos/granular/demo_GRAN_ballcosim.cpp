@@ -152,7 +152,7 @@ int main(int argc, char* argv[]) {
 
     std::vector<float3> mesh_translations(1, make_float3(0, 0, 0));
 
-    float ball_radius = 20;
+    float ball_radius = 30;
     std::vector<ChMatrix33<float>> mesh_rotscales(1, ChMatrix33<float>(ball_radius));
 
     float ball_density = params.sphere_density / 100;
@@ -198,11 +198,18 @@ int main(int argc, char* argv[]) {
     int currframe = 0;
     unsigned int curr_step = 0;
 
+    std::string mesh_force = params.output_dir.c_str()+"/_meshforce.csv";
+    std::ofstream forces(mesh_force);
+    std::ostringstream outforce;
+
+    int count = 0;
+    int max = 75; // max before error
+
     clock_t start = std::clock();
     for (float t = 0; t < params.time_end; t += iteration_step, curr_step++) {
         auto ball_pos = ball_body->GetPos();
         auto ball_rot = ball_body->GetRot();
-
+        ball_body->SetPos_dt(ChVector<>(0,0,-100));
         auto ball_vel = ball_body->GetPos_dt();
         auto ball_ang_vel = ball_body->GetWvel_loc();
         ball_ang_vel = ball_body->GetRot().GetInverse().Rotate(ball_ang_vel);
@@ -234,6 +241,8 @@ int main(int argc, char* argv[]) {
         ball_body->Accumulate_force(ChVector<>(ball_force[0], ball_force[1], ball_force[2]), ball_pos, false);
         ball_body->Accumulate_torque(ChVector<>(ball_force[3], ball_force[4], ball_force[5]), false);
 
+        
+
         if (curr_step % out_steps == 0) {
             std::cout << "Rendering frame " << currframe << std::endl;
             char filename[100];
@@ -247,15 +256,20 @@ int main(int argc, char* argv[]) {
             writeMeshFrames(outstream, *ball_body, mesh_filename, ball_radius);
             meshfile << outstream.str();
 
-            std::ofstream Forces("ball_force.csv");
-            Forces << ball_force[0] << "," << ball_force[1] << "," << ball_force[2] << "\n";
-            Forces.close();
-
-            std::ofstream Torques("ball_torque.csv");
-            Torques << ball_force[3] << "," << ball_force[4] << "," << ball_force[5] << "\n";
-            Torques.close();
+            
+            outforce << "fx,fy,fz,tx,ty,tz\n";
+            outforce<<ball_force[0]<<","<<ball_force[1]<<","<<ball_force[2]<<","<<ball_force[3]<<","<<ball_force[4]<<","<<ball_force[5]<<"\n";
+            count+=1;
         }
+        
+        
+        if(count>max){
+            break;
+        }
+        
+        
     }
+    forces << outforce.str();
 
     clock_t end = std::clock();
     double total_time = ((double)(end - start)) / CLOCKS_PER_SEC;
