@@ -106,10 +106,13 @@ jobs:
       - name: Fetch Thrust
         run: |
           DEPS="$RUNNER_TEMP/deps"
+          if command -v cygpath >/dev/null; then DEPS="$(cygpath -u "$DEPS")"; fi
           mkdir -p "$DEPS"
-          curl -fsSL -o "$DEPS/thrust.tar.gz" https://github.com/NVIDIA/thrust/archive/refs/tags/1.17.2.tar.gz
-          tar -xzf "$DEPS/thrust.tar.gz" -C "$DEPS"
+          # shallow clone of the release tag (no tarball: avoids truncated downloads and Windows
+          # drive-letter paths in tar); the cub / libcu++ submodules are not needed for the OpenMP back end
+          git clone -q -c advice.detachedHead=false --depth 1 --branch 1.17.2 https://github.com/NVIDIA/thrust.git "$DEPS/thrust-1.17.2"
           perl -pi -e 's/_VSTD::__wrap_iter/std::__wrap_iter/g' "$DEPS/thrust-1.17.2/thrust/type_traits/is_contiguous_iterator.h"
+          test -f "$DEPS/thrust-1.17.2/thrust/version.h"
           THRUST="$DEPS/thrust-1.17.2"
           if command -v cygpath >/dev/null; then THRUST="$(cygpath -m "$THRUST")"; fi
           echo "THRUST_DIR=$THRUST" >> "$GITHUB_ENV"
