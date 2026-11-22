@@ -1,0 +1,271 @@
+name: Build and release prebuilt packages
+
+on:
+  push:
+    branches: ["**"]
+    tags: ["**"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: linux-x86_64,   os: ubuntu-24.04, ext: tar.gz }
+          - { name: windows-x86_64, os: windows-2022, ext: zip }
+          - { name: macos-arm64,    os: macos-latest, ext: tar.gz }
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout Chrono
+        uses: actions/checkout@v4
+
+      # ---- System dependencies ----------------------------------------------------------------
+      - name: Dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build libeigen3-dev pkg-config
+          # Intel oneMKL (Chrono::PardisoMKL sparse direct solver); optional, skipped if unavailable
+          if wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB \
+               | gpg --dearmor | sudo tee /usr/share/keyrings/oneapi-archive-keyring.gpg >/dev/null \
+             && echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" \
+               | sudo tee /etc/apt/sources.list.d/oneAPI.list >/dev/null \
+             && sudo apt-get update && sudo apt-get install -y intel-oneapi-mkl-devel; then
+            MKL=/opt/intel/oneapi/mkl/latest
+            echo "MKLROOT=$MKL" >> "$GITHUB_ENV"
+            echo "CMAKE_PREFIX_PATH=$MKL" >> "$GITHUB_ENV"
+          else
+            echo "::warning::oneMKL not available, Chrono::PardisoMKL will not be built"
+          fi
+
+      - name: Dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: brew install cmake ninja eigen
+
+      - name: Dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          mkdir -p "$RUNNER_TEMP/vcpkg-cache"
+          echo "VCPKG_DEFAULT_BINARY_CACHE=$(cygpath -w "$RUNNER_TEMP/vcpkg-cache")" >> "$GITHUB_ENV"
+          echo "CMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT\\scripts\\buildsystems\\vcpkg.cmake" >> "$GITHUB_ENV"
+
+      - name: Cache vcpkg binaries (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/vcpkg-cache
+          key: vcpkg-${{ matrix.name }}-eigen3-v1
+
+      - name: Install Eigen with vcpkg (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          "$VCPKG_INSTALLATION_ROOT/vcpkg" install eigen3 --triplet x64-windows
+
+      - name: MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      # ---- Build & install Spectra (develop branch, required by Chrono::Modal) -----------------
+      - name: Build and install Spectra
+        run: |
+          PREFIX="$GITHUB_WORKSPACE/install"
+          mkdir -p "$PREFIX"
+          NPREFIX="$PREFIX"
+          if command -v cygpath >/dev/null; then NPREFIX="$(cygpath -m "$PREFIX")"; fi
+
+          echo "== fetching Spectra (develop branch)"
+          git clone -q -c advice.detachedHead=false --depth 1 --branch develop https://github.com/yixuan/spectra.git "$RUNNER_TEMP/spectra-src"
+
+          OPT=()
+          [ -n "${CMAKE_TOOLCHAIN_FILE:-}" ] && OPT+=(-DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE")
+          command -v ninja >/dev/null && OPT+=(-G Ninja)
+
+          cmake -S "$RUNNER_TEMP/spectra-src" -B "$RUNNER_TEMP/spectra-build" "${OPT[@]}" \
+            -DCMAKE_INSTALL_PREFIX="$NPREFIX" -DCMAKE_BUILD_TYPE=Release
+          cmake --install "$RUNNER_TEMP/spectra-build"
+
+      # ---- Build & install Project Chrono -----------------------------------------------------
+      - name: Configure Chrono
+        run: |
+          PREFIX="$GITHUB_WORKSPACE/install"
+          NPREFIX="$PREFIX"
+          if command -v cygpath >/dev/null; then NPREFIX="$(cygpath -m "$PREFIX")"; fi
+
+          OPT=()
+          command -v ninja >/dev/null && OPT+=(-G Ninja)
+
+          if [ -n "${MKLROOT:-}" ]; then
+            OPT+=(-DCH_ENABLE_MODULE_PARDISO_MKL=ON)
+            for d in "$MKLROOT/lib/cmake/mkl" "$MKLROOT/lib/intel64/cmake/mkl"; do
+              [ -f "$d/MKLConfig.cmake" ] && { OPT+=(-DMKL_DIR="$d"); break; }
+            done
+            echo "== MKLROOT=$MKLROOT: enabling Chrono::PardisoMKL"
+          fi
+
+          if [ -n "${CMAKE_TOOLCHAIN_FILE:-}" ]; then
+            OPT+=(-DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE")
+          fi
+
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            OPT+=(-DCMAKE_INSTALL_RPATH='$ORIGIN')
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            OPT+=(-DCMAKE_INSTALL_RPATH='@loader_path')
+          fi
+
+          cmake -S . -B build "${OPT[@]}" \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX="$NPREFIX" \
+            -DCMAKE_PREFIX_PATH="$NPREFIX" \
+            -Dspectra_DIR="$NPREFIX/share/spectra/cmake" \
+            -DBUILD_DEMOS=OFF \
+            -DBUILD_TESTING=OFF \
+            -DBUILD_BENCHMARKING=OFF \
+            -DCH_ENABLE_MODULE_MODAL=ON \
+            -DCH_ENABLE_MODULE_VEHICLE=ON \
+            -DCH_ENABLE_MODULE_VEHICLE_MODELS=ON \
+            -DCH_ENABLE_MODULE_PERIDYNAMICS=ON
+
+      - name: Build Chrono
+        run: |
+          cmake --build build --config Release -j $(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+
+      - name: Install Chrono
+        run: |
+          cmake --install build --config Release
+
+      # ---- Package preparation & archiving ----------------------------------------------------
+      - name: Prepare and archive package
+        run: |
+          PREFIX="$GITHUB_WORKSPACE/install"
+
+          # Synchronize data locations for maximum compatibility across install and build paths
+          if [ -d "$PREFIX/share/chrono/data" ] && [ ! -d "$PREFIX/data" ]; then
+            cp -R "$PREFIX/share/chrono/data" "$PREFIX/data"
+          elif [ -d "$PREFIX/data" ] && [ ! -d "$PREFIX/share/chrono/data" ]; then
+            mkdir -p "$PREFIX/share/chrono"
+            cp -R "$PREFIX/data" "$PREFIX/share/chrono/data"
+          fi
+
+          # Prune unused large datasets to reduce archive size (~1.1 GB -> ~100 MB)
+          for d in "$PREFIX/data" "$PREFIX/share/chrono/data"; do
+            if [ -d "$d" ]; then
+              rm -rf "$d"/sensor "$d"/robot "$d"/fsi-tdpf "$d"/fsi-sph "$d"/synchrono "$d"/vsg "$d"/testing "$d"/cosimulation "$d"/models "$d"/solidworks
+              rm -rf "$d"/vehicle/cosim "$d"/vehicle/fmi "$d"/vehicle/joystick
+            fi
+          done
+
+          # Include license
+          [ -f LICENSE ] && cp LICENSE "$PREFIX/LICENSE-chrono"
+
+          PKG_FILE="$RUNNER_TEMP/chrono-${{ matrix.name }}.${{ matrix.ext }}"
+          cd "$PREFIX"
+          if [ "${{ matrix.ext }}" = "zip" ]; then
+            if command -v 7z >/dev/null 2>&1; then
+              7z a -tzip -mx=6 "$PKG_FILE" *
+            else
+              powershell -NoProfile -Command "Compress-Archive -Path * -DestinationPath '$PKG_FILE' -Force"
+            fi
+          else
+            tar -czf "$PKG_FILE" *
+          fi
+          echo "Package created: $PKG_FILE ($(du -h "$PKG_FILE" 2>/dev/null || ls -lh "$PKG_FILE"))"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: chrono-${{ matrix.name }}
+          path: ${{ runner.temp }}/chrono-${{ matrix.name }}.${{ matrix.ext }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish release packages
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: chrono-*
+          path: dist
+          merge-multiple: true
+
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Files to release:"
+          ls -la dist/
+
+          SHA="${{ github.sha }}"
+          SHORT_SHA="${SHA:0:10}"
+          REF_NAME="${{ github.ref_name }}"
+          COMMIT_TAG="chrono-${SHA}"
+
+          echo "== Publishing release for commit tag: $COMMIT_TAG"
+          if ! gh release view "$COMMIT_TAG" >/dev/null 2>&1; then
+            gh release create "$COMMIT_TAG" \
+              --target "$SHA" \
+              --title "Project Chrono $SHORT_SHA" \
+              --notes "Automated prebuilt packages for Project Chrono at commit $SHA (branch: $REF_NAME)." \
+              dist/*
+          else
+            gh release upload "$COMMIT_TAG" dist/* --clobber
+          fi
+
+          if [ "${{ github.ref_type }}" = "branch" ]; then
+            echo "== Updating branch rolling release for: $REF_NAME"
+            if ! gh release view "$REF_NAME" >/dev/null 2>&1; then
+              gh release create "$REF_NAME" \
+                --target "$SHA" \
+                --title "Project Chrono ($REF_NAME)" \
+                --notes "Rolling prebuilt packages for branch $REF_NAME (commit $SHA)." \
+                dist/*
+            else
+              gh release upload "$REF_NAME" dist/* --clobber
+            fi
+
+            if [ "$REF_NAME" = "develop" ] || [ "$REF_NAME" = "main" ] || [ "$REF_NAME" = "master" ]; then
+              echo "== Updating latest release"
+              if ! gh release view "latest" >/dev/null 2>&1; then
+                gh release create "latest" \
+                  --target "$SHA" \
+                  --title "Project Chrono (latest)" \
+                  --notes "Latest prebuilt packages for Project Chrono (commit $SHA)." \
+                  dist/*
+              else
+                gh release upload "latest" dist/* --clobber
+              fi
+            fi
+          fi
+
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "== Updating tag release for: $REF_NAME"
+            if ! gh release view "$REF_NAME" >/dev/null 2>&1; then
+              gh release create "$REF_NAME" \
+                --target "$SHA" \
+                --title "Project Chrono $REF_NAME" \
+                --notes "Prebuilt packages for tag $REF_NAME." \
+                dist/*
+            else
+              gh release upload "$REF_NAME" dist/* --clobber
+            fi
+          fi
