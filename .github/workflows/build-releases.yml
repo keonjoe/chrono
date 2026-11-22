@@ -55,7 +55,7 @@ jobs:
 
       - name: Dependencies (macOS)
         if: runner.os == 'macOS'
-        run: brew install cmake ninja eigen
+        run: brew install cmake ninja eigen libomp
 
       - name: Dependencies (Windows)
         if: runner.os == 'Windows'
@@ -99,6 +99,20 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: x64
+
+      # ---- Thrust 1.17.2 headers (Chrono::Multicore, OpenMP back end; no CUDA needed) -----------
+      # Newer libc++ versions removed the `_VSTD` macro used by this release (see
+      # contrib/build-scripts/macos/buildThrust.sh), so it is replaced by `std`.
+      - name: Fetch Thrust
+        run: |
+          DEPS="$RUNNER_TEMP/deps"
+          mkdir -p "$DEPS"
+          curl -fsSL -o "$DEPS/thrust.tar.gz" https://github.com/NVIDIA/thrust/archive/refs/tags/1.17.2.tar.gz
+          tar -xzf "$DEPS/thrust.tar.gz" -C "$DEPS"
+          perl -pi -e 's/_VSTD::__wrap_iter/std::__wrap_iter/g' "$DEPS/thrust-1.17.2/thrust/type_traits/is_contiguous_iterator.h"
+          THRUST="$DEPS/thrust-1.17.2"
+          if command -v cygpath >/dev/null; then THRUST="$(cygpath -m "$THRUST")"; fi
+          echo "THRUST_DIR=$THRUST" >> "$GITHUB_ENV"
 
       # ---- Build & install Spectra (develop branch, required by Chrono::Modal) -----------------
       - name: Build and install Spectra
@@ -152,7 +166,15 @@ jobs:
             OPT+=(-DCMAKE_INSTALL_RPATH='$ORIGIN')
           elif [ "${{ runner.os }}" = "macOS" ]; then
             OPT+=(-DCMAKE_INSTALL_RPATH='@loader_path')
+            # Apple clang has no bundled OpenMP runtime: Homebrew's libomp
+            LIBOMP="$(brew --prefix libomp)"
+            OPT+=(-DOpenMP_ROOT="$LIBOMP"
+                  -DOpenMP_CXX_FLAGS="-Xclang -fopenmp -I$LIBOMP/include" -DOpenMP_C_FLAGS="-Xclang -fopenmp -I$LIBOMP/include"
+                  -DOpenMP_CXX_LIB_NAMES=omp -DOpenMP_C_LIB_NAMES=omp -DOpenMP_omp_LIBRARY="$LIBOMP/lib/libomp.dylib")
           fi
+
+          # Chrono::Multicore (OpenMP + Thrust); required by OpenMultiPhysics
+          OPT+=(-DCH_ENABLE_MODULE_MULTICORE=ON -DCH_ENABLE_OPENMP=ON -DThrust_ROOT="$THRUST_DIR" -DTHRUST_INCLUDE_DIR="$THRUST_DIR")
 
           cmake -S . -B build "${OPT[@]}" \
             -DCMAKE_BUILD_TYPE=Release \
@@ -174,10 +196,13 @@ jobs:
       - name: Install Chrono
         run: |
           cmake --install build --config Release
+          CFG="$(find install -name ChronoConfig.cmake | head -1)"
+          # every package must ship Chrono::Multicore
+          grep -Eqi 'Chrono_MULTICORE_AVAILABLE[[:space:]]+(ON|TRUE|1)\b' "$CFG" \
+            || { echo "::error::Chrono::Multicore missing from the installed package"; exit 1; }
           # Linux / Windows packages must ship Chrono::PardisoMKL (macOS has no oneMKL, OpenMultiPhysics
           # uses Apple Accelerate there)
           if [ "${{ runner.os }}" != "macOS" ]; then
-            CFG="$(find install -name ChronoConfig.cmake | head -1)"
             grep -Eqi 'Chrono_PARDISOMKL_AVAILABLE[[:space:]]+(ON|TRUE|1)\b' "$CFG" \
               || { echo "::error::Chrono::PardisoMKL missing from the installed package"; exit 1; }
           fi
@@ -188,9 +213,12 @@ jobs:
           PREFIX="$GITHUB_WORKSPACE/install"
 
           # Ensure all exported target include directories exist
-          for d in chrono chrono_modal chrono_vehicle chrono_models/vehicle chrono_peridynamics chrono_pardisomkl; do
+          for d in chrono chrono_modal chrono_vehicle chrono_models/vehicle chrono_peridynamics chrono_pardisomkl chrono_multicore; do
             mkdir -p "$PREFIX/include/$d"
           done
+
+          # Chrono::Multicore headers include Thrust: ship the (header-only) library with the package
+          cp -R "$THRUST_DIR/thrust" "$PREFIX/include/thrust"
 
           # Synchronize data locations for maximum compatibility across install and build paths
           if [ -d "$PREFIX/share/chrono/data" ] && [ ! -d "$PREFIX/data" ]; then
@@ -299,7 +327,7 @@ jobs:
               gh release upload "$REF_NAME" dist/* --clobber
             fi
 
-            LATEST_NOTES="Rolling latest release packages of Project Chrono built for automated consumption by OpenMultiPhysics (Linux x86_64, Windows x86_64, macOS Apple Silicon arm64). Built from commit $SHA on branch $REF_NAME."
+            LATEST_NOTES="Rolling latest release packages of Project Chrono built for automated consumption by OpenMultiPhysics (Linux x86_64, Windows x86_64, macOS Apple Silicon arm64; with Chrono::Multicore). Built from commit $SHA on branch $REF_NAME."
             echo "== Updating latest release"
             if ! gh release view "latest" >/dev/null 2>&1; then
               gh release create "latest" \
