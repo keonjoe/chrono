@@ -38,6 +38,10 @@ class ChApi ChContactContainerNSC : public ChContactContainer {
     /// Report the number of added contacts.
     virtual unsigned int GetNumContacts() const override { return n_added + n_added_rolling; }
 
+    /// Number of sliding (3-constraint) contacts; they precede the rolling (6-constraint) contacts in the
+    /// state vectors. [OpenMultiPhysics]
+    unsigned int GetNumContactsSliding() const { return n_added; }
+
     /// Remove (delete) all contained contact data.
     virtual void RemoveAllContacts() override;
 

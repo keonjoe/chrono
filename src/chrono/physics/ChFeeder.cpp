@@ -85,6 +85,13 @@ void ChFeeder::IntLoadConstraint_Ct(const unsigned int off, ChVectorDynamic<>& Q
             ChFeeder* myfeeder;
             ChVectorDynamic<>* Qc;
             double c;
+            // [OpenMultiPhysics fix] state offset of the contacts: the container's offset plus a running
+            // count in the container's own order (sliding contacts with 3 rows first, then rolling ones with
+            // 6), instead of the solver-descriptor offset, which is stale here and only equals the state
+            // offset when no other constraints precede the contacts
+            unsigned int base = 0;
+            unsigned int n_sliding = 0;
+            unsigned int k = 0;
 
             virtual ~MyContactCallback() {}
 
@@ -137,10 +144,14 @@ void ChFeeder::IntLoadConstraint_Ct(const unsigned int off, ChVectorDynamic<>& Q
                     contact_Ct.x() = 0;
 
                     // Write the Ct term in the Qc vector, as required by IntLoadConstraint_Ct
-                    (*Qc)(offset) = contact_Ct.x() * c;      // Ct =dC/dt term, N normal direction (
-                    (*Qc)(offset + 1) = contact_Ct.y() * c;  // Ct =dC/dt term, Tu direction
-                    (*Qc)(offset + 2) = contact_Ct.z() * c;  // Ct =dC/dt term, Tv direction
+                    // added to (not overwriting) the C/h terms already loaded in Qc [OpenMultiPhysics fix]
+                    unsigned int so = base + (k < n_sliding ? 3 * k : 3 * n_sliding + 6 * (k - n_sliding));
+                    (*Qc)(so) += contact_Ct.x() * c;      // Ct =dC/dt term, N normal direction (
+                    (*Qc)(so + 1) += contact_Ct.y() * c;  // Ct =dC/dt term, Tu direction
+                    (*Qc)(so + 2) += contact_Ct.z() * c;  // Ct =dC/dt term, Tv direction
                 }
+                (void)offset;
+                k++;
                 return true;
             }
         };
@@ -149,6 +160,8 @@ void ChFeeder::IntLoadConstraint_Ct(const unsigned int off, ChVectorDynamic<>& Q
         callback->myfeeder = this;
         callback->Qc = &Qc;
         callback->c = c;
+        callback->base = mcontainer->GetOffset_L();
+        callback->n_sliding = mcontainer->GetNumContactsSliding();
 
         mcontainer->ReportAllContacts(callback);
     }

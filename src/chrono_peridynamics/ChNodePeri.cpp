@@ -103,8 +103,8 @@ void ChNodePeri::ContactComputeQ(const ChVector3d& F,
                                  const ChState& state_x,
                                  ChVectorDynamic<>& Q,
                                  int offset) {
+    // a node has 3 coordinates: no torque block [OpenMultiPhysics fix]
     Q.segment(offset, 3) = F.eigen();
-    Q.segment(offset + 3, 3) = VNULL.eigen();
 }
 
 void ChNodePeri::ComputeJacobianForContactPart(const ChVector3d& abs_point,

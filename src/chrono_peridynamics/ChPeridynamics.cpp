@@ -132,6 +132,9 @@ void ChPeridynamics::Setup() {
     for (unsigned int i = 0; i < vnodes.size(); i++) {
         // Set node offsets in state vectors (based on the offsets of the containing mesh)
         vnodes[i]->NodeSetOffsetPosLevel(GetOffset_x() + n_dofs);
+        // velocity-level offset too (as in ChMesh::Setup): smooth (SMC) contact forces are
+        // loaded at NodeGetOffsetVelLevel() [OpenMultiPhysics fix]
+        vnodes[i]->NodeSetOffsetVelLevel(GetOffset_w() + n_dofs);
 
         // Count the actual degrees of freedom (consider only nodes that are not fixed)
         if (!vnodes[i]->IsFixed()) {
