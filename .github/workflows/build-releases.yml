@@ -9,6 +9,11 @@ on:
 permissions:
   contents: write
 
+# a newer push supersedes an unfinished build of the same ref
+concurrency:
+  group: chrono-build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: ${{ matrix.name }}
@@ -57,7 +62,7 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/vcpkg-cache"
           echo "VCPKG_DEFAULT_BINARY_CACHE=$(cygpath -w "$RUNNER_TEMP/vcpkg-cache")" >> "$GITHUB_ENV"
-          echo "CMAKE_TOOLCHAIN_FILE=$VCPKG_INSTALLATION_ROOT\\scripts\\buildsystems\\vcpkg.cmake" >> "$GITHUB_ENV"
+          echo "CMAKE_TOOLCHAIN_FILE=$(cygpath -m "$VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake")" >> "$GITHUB_ENV"
 
       - name: Cache vcpkg binaries (Windows)
         if: runner.os == 'Windows'
@@ -70,6 +75,24 @@ jobs:
         if: runner.os == 'Windows'
         run: |
           "$VCPKG_INSTALLATION_ROOT/vcpkg" install eigen3 --triplet x64-windows
+
+      # Intel oneMKL for Chrono::PardisoMKL (conda-forge package: headers, import libs, DLLs, CMake config)
+      - name: Install oneMKL (Windows)
+        if: runner.os == 'Windows'
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: mkl
+          create-args: mkl-devel
+          micromamba-root-path: ${{ runner.temp }}/micromamba
+          cache-environment: true
+          init-shell: none
+
+      - name: Configure oneMKL (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          MKL="$(cygpath -m "$RUNNER_TEMP/micromamba/envs/mkl/Library")"
+          [ -f "$MKL/lib/cmake/mkl/MKLConfig.cmake" ] || { echo "::error::MKLConfig.cmake not found under $MKL"; ls "$MKL/lib" | head -30; exit 1; }
+          echo "MKLROOT=$MKL" >> "$GITHUB_ENV"
 
       - name: MSVC environment (Windows)
         if: runner.os == 'Windows'
@@ -86,15 +109,22 @@ jobs:
           if command -v cygpath >/dev/null; then NPREFIX="$(cygpath -m "$PREFIX")"; fi
 
           echo "== fetching Spectra (develop branch)"
-          git clone -q -c advice.detachedHead=false --depth 1 --branch develop https://github.com/yixuan/spectra.git "$RUNNER_TEMP/spectra-src"
+          SRC="$RUNNER_TEMP/spectra-src"
+          BLD="$RUNNER_TEMP/spectra-build"
+          git clone -q -c advice.detachedHead=false --depth 1 --branch develop https://github.com/yixuan/spectra.git "$SRC"
+
+          if command -v cygpath >/dev/null; then
+            SRC="$(cygpath -m "$SRC")"
+            BLD="$(cygpath -m "$BLD")"
+          fi
 
           OPT=()
           [ -n "${CMAKE_TOOLCHAIN_FILE:-}" ] && OPT+=(-DCMAKE_TOOLCHAIN_FILE="$CMAKE_TOOLCHAIN_FILE")
           command -v ninja >/dev/null && OPT+=(-G Ninja)
 
-          cmake -S "$RUNNER_TEMP/spectra-src" -B "$RUNNER_TEMP/spectra-build" "${OPT[@]}" \
+          cmake -S "$SRC" -B "$BLD" "${OPT[@]}" \
             -DCMAKE_INSTALL_PREFIX="$NPREFIX" -DCMAKE_BUILD_TYPE=Release
-          cmake --install "$RUNNER_TEMP/spectra-build"
+          cmake --install "$BLD"
 
       # ---- Build & install Project Chrono -----------------------------------------------------
       - name: Configure Chrono
@@ -139,16 +169,28 @@ jobs:
 
       - name: Build Chrono
         run: |
-          cmake --build build --config Release -j $(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
+          cmake --build build --config Release --parallel
 
       - name: Install Chrono
         run: |
           cmake --install build --config Release
+          # Linux / Windows packages must ship Chrono::PardisoMKL (macOS has no oneMKL, OpenMultiPhysics
+          # uses Apple Accelerate there)
+          if [ "${{ runner.os }}" != "macOS" ]; then
+            CFG="$(find install -name ChronoConfig.cmake | head -1)"
+            grep -Eqi 'Chrono_PARDISOMKL_AVAILABLE[[:space:]]+(ON|TRUE|1)\b' "$CFG" \
+              || { echo "::error::Chrono::PardisoMKL missing from the installed package"; exit 1; }
+          fi
 
       # ---- Package preparation & archiving ----------------------------------------------------
       - name: Prepare and archive package
         run: |
           PREFIX="$GITHUB_WORKSPACE/install"
+
+          # Ensure all exported target include directories exist
+          for d in chrono chrono_modal chrono_vehicle chrono_models/vehicle chrono_peridynamics chrono_pardisomkl; do
+            mkdir -p "$PREFIX/include/$d"
+          done
 
           # Synchronize data locations for maximum compatibility across install and build paths
           if [ -d "$PREFIX/share/chrono/data" ] && [ ! -d "$PREFIX/data" ]; then
@@ -170,12 +212,17 @@ jobs:
           [ -f LICENSE ] && cp LICENSE "$PREFIX/LICENSE-chrono"
 
           PKG_FILE="$RUNNER_TEMP/chrono-${{ matrix.name }}.${{ matrix.ext }}"
+          WIN_PKG_FILE="$PKG_FILE"
+          if command -v cygpath >/dev/null 2>&1; then WIN_PKG_FILE="$(cygpath -m "$PKG_FILE")"; fi
+
           cd "$PREFIX"
           if [ "${{ matrix.ext }}" = "zip" ]; then
             if command -v 7z >/dev/null 2>&1; then
-              7z a -tzip -mx=6 "$PKG_FILE" *
+              7z a -tzip -mx=6 "$WIN_PKG_FILE" *
+            elif [ -x "/c/Program Files/7-Zip/7z.exe" ]; then
+              "/c/Program Files/7-Zip/7z.exe" a -tzip -mx=6 "$WIN_PKG_FILE" *
             else
-              powershell -NoProfile -Command "Compress-Archive -Path * -DestinationPath '$PKG_FILE' -Force"
+              powershell -NoProfile -Command "Compress-Archive -Path * -DestinationPath '$WIN_PKG_FILE' -Force"
             fi
           else
             tar -czf "$PKG_FILE" *
@@ -194,6 +241,10 @@ jobs:
     name: Publish release packages
     needs: build
     runs-on: ubuntu-24.04
+    # never publish two releases at once (the rolling "latest" / branch releases would race)
+    concurrency:
+      group: chrono-release
+      cancel-in-progress: false
     permissions:
       contents: write
 
@@ -220,40 +271,45 @@ jobs:
           REF_NAME="${{ github.ref_name }}"
           COMMIT_TAG="chrono-${SHA}"
 
+          COMMIT_NOTES="Automated prebuilt packages for Project Chrono at commit $SHA (branch: $REF_NAME), configured for consumption by OpenMultiPhysics."
           echo "== Publishing release for commit tag: $COMMIT_TAG"
           if ! gh release view "$COMMIT_TAG" >/dev/null 2>&1; then
             gh release create "$COMMIT_TAG" \
               --target "$SHA" \
               --title "Project Chrono $SHORT_SHA" \
-              --notes "Automated prebuilt packages for Project Chrono at commit $SHA (branch: $REF_NAME)." \
+              --notes "$COMMIT_NOTES" \
               dist/*
           else
+            gh release edit "$COMMIT_TAG" --notes "$COMMIT_NOTES" >/dev/null 2>&1 || true
             gh release upload "$COMMIT_TAG" dist/* --clobber
           fi
 
-          if [ "${{ github.ref_type }}" = "branch" ]; then
+          # Update rolling release for primary branches (develop, main, master)
+          if [ "$REF_NAME" = "develop" ] || [ "$REF_NAME" = "main" ] || [ "$REF_NAME" = "master" ]; then
+            BRANCH_NOTES="Rolling prebuilt packages for branch $REF_NAME (commit $SHA) for consumption by OpenMultiPhysics."
             echo "== Updating branch rolling release for: $REF_NAME"
             if ! gh release view "$REF_NAME" >/dev/null 2>&1; then
               gh release create "$REF_NAME" \
                 --target "$SHA" \
                 --title "Project Chrono ($REF_NAME)" \
-                --notes "Rolling prebuilt packages for branch $REF_NAME (commit $SHA)." \
+                --notes "$BRANCH_NOTES" \
                 dist/*
             else
+              gh release edit "$REF_NAME" --target "$SHA" --notes "$BRANCH_NOTES" >/dev/null 2>&1 || true
               gh release upload "$REF_NAME" dist/* --clobber
             fi
 
-            if [ "$REF_NAME" = "develop" ] || [ "$REF_NAME" = "main" ] || [ "$REF_NAME" = "master" ]; then
-              echo "== Updating latest release"
-              if ! gh release view "latest" >/dev/null 2>&1; then
-                gh release create "latest" \
-                  --target "$SHA" \
-                  --title "Project Chrono (latest)" \
-                  --notes "Latest prebuilt packages for Project Chrono (commit $SHA)." \
-                  dist/*
-              else
-                gh release upload "latest" dist/* --clobber
-              fi
+            LATEST_NOTES="Rolling latest release packages of Project Chrono built for automated consumption by OpenMultiPhysics (Linux x86_64, Windows x86_64, macOS Apple Silicon arm64). Built from commit $SHA on branch $REF_NAME."
+            echo "== Updating latest release"
+            if ! gh release view "latest" >/dev/null 2>&1; then
+              gh release create "latest" \
+                --target "$SHA" \
+                --title "Project Chrono (latest for OpenMultiPhysics)" \
+                --notes "$LATEST_NOTES" \
+                dist/*
+            else
+              gh release edit "latest" --target "$SHA" --title "Project Chrono (latest for OpenMultiPhysics)" --notes "$LATEST_NOTES" >/dev/null 2>&1 || true
+              gh release upload "latest" dist/* --clobber
             fi
           fi
 

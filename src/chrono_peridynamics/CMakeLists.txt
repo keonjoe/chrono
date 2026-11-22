@@ -84,7 +84,7 @@ install(TARGETS Chrono_peridynamics
 #-------------------------------------------------------------------------------
 
 # Old way (install headers preserving directory structure)
-install(FILES ${Chrono_PardisoMKL_HEADERS}
+install(FILES ${Chrono_PERIDYNAMICS_HEADERS}
         DESTINATION include/chrono_peridynamics)
 
 
