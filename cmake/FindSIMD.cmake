@@ -369,10 +369,14 @@ endfunction()
 
 # =========================================================================================
 
+# Use -march=native if supported (turn OFF for binaries that run on other machines)
+option(CH_SIMD_NATIVE "Use -march=native for SIMD optimization" ON)
+
 set(SIMD_NATIVE TRUE) 
 
 # Determine whether to use automatic detection 
 
+if(CH_SIMD_NATIVE)
 if(CMAKE_COMPILER_IS_GNUCC OR CMAKE_COMPILER_IS_GNUCXX)
     execute_process(COMMAND ${CMAKE_CXX_COMPILER} "-dumpversion" OUTPUT_VARIABLE GCC_VERSION_STRING)
     if(GCC_VERSION_STRING VERSION_GREATER 4.2 AND NOT APPLE AND NOT CMAKE_CROSSCOMPILING)
@@ -400,6 +404,7 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND NOT CMAKE_CROSSCOMPILING)
             return()
         endif()
     endif()
+endif()
 endif()
 
 set(SIMD_NATIVE FALSE) 

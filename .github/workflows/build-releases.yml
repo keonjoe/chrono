@@ -181,6 +181,7 @@ jobs:
 
           cmake -S . -B build "${OPT[@]}" \
             -DCMAKE_BUILD_TYPE=Release \
+            -DCH_SIMD_NATIVE=OFF \
             -DCMAKE_INSTALL_PREFIX="$NPREFIX" \
             -DCMAKE_PREFIX_PATH="$NPREFIX" \
             -Dspectra_DIR="$NPREFIX/share/spectra/cmake" \
