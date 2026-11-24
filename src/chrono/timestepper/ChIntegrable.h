@@ -175,6 +175,11 @@ class ChApi ChIntegrable {
     /// because the linear system uses them with flipped signs.
     ///
     /// This function must return true if successful and false otherwise.
+    ///
+    /// Default implementation: dense solution with H assembled from LoadResidual_Hv, dF/dy = H * d(dy/dt)/dy by
+    /// finite differences of StateSolve, and Cq' assembled from LoadResidual_CqL (constraint rows only if the latter
+    /// is overridden). This requires one StateSolve per state coordinate and a dense factorization; derived classes
+    /// with many states should override it.
     virtual bool StateSolveCorrection(ChStateDelta& Dy,             ///< result: computed Dy
                                       ChVectorDynamic<>& DL,        ///< result: computed DL Lagrange multipliers
                                       const ChVectorDynamic<>& R,   ///< the R residual
@@ -188,60 +193,68 @@ class ChApi ChIntegrable {
                                       UpdateFlags update_flags,      ///< flags used in case of an update
                                       bool call_setup,              ///< if true, call the solver's Setup function
                                       bool call_analyze             ///< if true, call the solver's Setup analyze phase
-    ) {
-        throw std::runtime_error("StateSolveCorrection() not implemented, implicit integrators cannot be used. ");
-    }
+    );
 
     /// Increment a vector R (usually the residual in a Newton Raphson iteration
     /// for solving an implicit integration step) with a term that has H multiplied a given vector w:
     ///    R += c*H*w
+    /// Default implementation: H = identity (the ODE in the form dy/dt = F(y,t) of StateSolve).
     virtual void LoadResidual_Hv(ChVectorDynamic<>& R,        ///< result: the R residual, R += c*M*v
                                  const ChVectorDynamic<>& v,  ///< the v vector
                                  const double c               ///< a scaling factor
-    ) {
-        throw std::runtime_error("LoadResidual_Hv() not implemented, implicit integrators cannot be used. ");
-    }
+    );
 
     /// Increment a vector R (usually the residual in a Newton Raphson iteration
     /// for solving an implicit integration step) with the term c*F:
     ///    R += c*F
+    /// Default implementation: F = H * dy/dt, with dy/dt from StateSolve at the current state (see StateGather).
     virtual void LoadResidual_F(ChVectorDynamic<>& R,  ///< result: the R residual, R += c*F
                                 const double c         ///< a scaling factor
-    ) {
-        throw std::runtime_error("LoadResidual_F() not implemented, implicit integrators cannot be used. ");
-    }
+    );
 
     /// Increment a vector R (usually the residual in a Newton Raphson iteration
     /// for solving an implicit integration step) with the term Cq'*L:
     ///    R += c*Cq'*L
+    /// Default implementation: no explicit constraints (any constraint is resolved within StateSolve), no-op.
     virtual void LoadResidual_CqL(ChVectorDynamic<>& R,        ///< result: the R residual, R += c*Cq'*L
                                   const ChVectorDynamic<>& L,  ///< the L vector
                                   const double c               ///< a scaling factor
-    ) {
-        throw std::runtime_error("LoadResidual_CqL() not implemented, implicit integrators cannot be used. ");
-    }
+    );
 
     /// Increment a vector Qc (usually the residual in a Newton Raphson iteration
     /// for solving an implicit integration step, constraint part) with the term C:
     ///    Qc += c*C
+    /// Default implementation: no explicit constraints (any constraint is resolved within StateSolve), no-op.
     virtual void LoadConstraint_C(ChVectorDynamic<>& Qc,        ///< result: the Qc residual, Qc += c*C
                                   const double c,               ///< scaling factor
                                   const double c_vel,           ///< scaling factor for constraints at speed level 
                                   const bool do_clamp = false,  ///< enable optional clamping of Qc
                                   const double mclam = 1e30     ///< clamping value
-    ) {
-        throw std::runtime_error("LoadConstraint_C() not implemented, implicit integrators cannot be used. ");
-    }
+    );
 
     /// Increment a vector Qc (usually the residual in a Newton Raphson iteration
     /// for solving an implicit integration step, constraint part) with the term Ct = partial derivative dC/dt:
     ///    Qc += c*Ct
+    /// Default implementation: no explicit constraints (any constraint is resolved within StateSolve), no-op.
     virtual void LoadConstraint_Ct(ChVectorDynamic<>& Qc,  ///< result: the Qc residual, Qc += c*Ct
                                    const double c,         ///< a scaling factor
                                    const double c_vel      ///< scaling factor for constraints at speed level
-    ) {
-        throw std::runtime_error("LoadConstraint_Ct() not implemented, implicit integrators cannot be used. ");
-    }
+    );
+
+  protected:
+    /// Dense Newton correction for the 1st order form (see StateSolveCorrection). Uses LoadResidual_Hv, finite
+    /// differences of StateSolve and, if use_constraints is true, LoadResidual_CqL.
+    bool SolveCorrectionFirstOrderFD(ChStateDelta& Dy,
+                                     ChVectorDynamic<>& DL,
+                                     const ChVectorDynamic<>& R,
+                                     const ChVectorDynamic<>& Qc,
+                                     const double a,
+                                     const double b,
+                                     const ChState& y,
+                                     const double T,
+                                     const double dt,
+                                     UpdateFlags update_flags,
+                                     bool use_constraints);
 };
 
 // -----------------------------------------------------------------------------
@@ -346,6 +359,11 @@ class ChApi ChIntegrableIIorder : public ChIntegrable {
     /// It is up to the derived class how to solve such linear system.
     ///
     /// This function must return true if successful and false otherwise.
+    ///
+    /// Default implementation: dense solution with M assembled from LoadResidual_Mv, dF/dx and dF/dv by finite
+    /// differences of LoadResidual_F, and Cq' assembled from LoadResidual_CqL (constraint rows only if the latter is
+    /// overridden). This requires two force evaluations per coordinate and a dense factorization; derived classes
+    /// with many coordinates should override it.
     virtual bool StateSolveCorrection(ChStateDelta& Dv,             ///< result: computed Dv
                                       ChVectorDynamic<>& L,         ///< result: computed Lagrange multipliers
                                       const ChVectorDynamic<>& R,   ///< the R residual
@@ -360,55 +378,50 @@ class ChApi ChIntegrableIIorder : public ChIntegrable {
                                       UpdateFlags update_flags,      ///< flags used in case of an update
                                       bool call_setup,              ///< if true, call the solver's Setup function
                                       bool call_analyze             ///< if true, call the solver's Setup analyze phase
-    ) {
-        throw std::runtime_error("StateSolveCorrection() not implemented, implicit integrators cannot be used. ");
-    }
+    );
 
     /// Assuming   M*a = F(x,v,t) + Cq'*L
     ///         C(x,t) = 0
     /// increment a vector R (usually the residual in a Newton Raphson iteration
     /// for solving an implicit integration step) with the term c*F:
     ///    R += c*F
+    /// Default implementation: F = M*a, with a from StateSolveA at the current state (see StateGather). A derived
+    /// class must override either StateSolveA or this function (the default StateSolveA uses this function).
     virtual void LoadResidual_F(ChVectorDynamic<>& R,  ///< result: the R residual, R += c*F
                                 const double c         ///< a scaling factor
-                                ) override {
-        throw std::runtime_error("LoadResidual_F() not implemented, integrator cannot be used. ");
-    }
+                                ) override;
 
     /// Assuming   M*a = F(x,v,t) + Cq'*L
     ///         C(x,t) = 0
     /// increment a vector R (usually the residual in a Newton Raphson iteration
     /// for solving an implicit integration step) with a term that has M multiplied a given vector w:
     ///    R += c*M*w
+    /// Default implementation: M = identity (the ODE in the form a = F(x,v,t)).
     virtual void LoadResidual_Mv(ChVectorDynamic<>& R,        ///< result: the R residual, R += c*M*v
                                  const ChVectorDynamic<>& w,  ///< the w vector
                                  const double c               ///< a scaling factor
-    ) {
-        throw std::runtime_error("LoadResidual_Mv() not implemented, implicit integrators cannot be used. ");
-    }
+    );
 
     /// Adds the lumped mass to a Md vector, representing a mass diagonal matrix. Used by lumped explicit integrators.
     /// If mass lumping is impossible or approximate, adds scalar error to "error" parameter.
     ///    Md += c*diag(M)    or   Md += c*HRZ(M)
+    /// Default implementation: row-sum lumping of M assembled from LoadResidual_Mv. The Frobenius norm of the
+    /// off-diagonal part of M is added to err.
     virtual void LoadLumpedMass_Md(ChVectorDynamic<>& Md,  ///< result: Md vector, diagonal of the lumped mass matrix
                                    double& err,            ///< result: not touched if lumping does not introduce errors
                                    const double c          ///< a scaling factor
-    ) {
-        throw std::runtime_error(
-            "LoadLumpedMass_Md() not implemented, explicit integrators with mass lumping cannot be used. ");
-    }
+    );
 
     /// Assuming   M*a = F(x,v,t) + Cq'*L
     ///         C(x,t) = 0
     /// increment a vectorR (usually the residual in a Newton Raphson iteration
     /// for solving an implicit integration step) with the term Cq'*L:
     ///    R += c*Cq'*L
+    /// Default implementation: no explicit constraints (any constraint is resolved within F / StateSolveA), no-op.
     virtual void LoadResidual_CqL(ChVectorDynamic<>& R,        ///< result: the R residual, R += c*Cq'*L
                                   const ChVectorDynamic<>& L,  ///< the L vector
                                   const double c               ///< a scaling factor
-                                  ) override {
-        throw std::runtime_error("LoadResidual_CqL() not implemented, implicit integrators cannot be used. ");
-    }
+                                  ) override;
 
     /// Evaluate the constraint Jacobians Cq at the current state.
     /// LoadResidual_CqL uses the Jacobians from the last evaluation; an integrator calls this function when it needs
@@ -420,26 +433,24 @@ class ChApi ChIntegrableIIorder : public ChIntegrable {
     /// Increment a vector Qc (usually the residual in a Newton Raphson iteration
     /// for solving an implicit integration step, constraint part) with the term C:
     ///    Qc += c*C
+    /// Default implementation: no explicit constraints, no-op.
     virtual void LoadConstraint_C(ChVectorDynamic<>& Qc,        ///< result: the Qc residual, Qc += c*C
                                   const double c,               ///< scaling factor
                                   const double c_vel,           ///< scaling factor for constraints at speed level 
                                   const bool do_clamp = false,  ///< enable optional clamping of Qc
                                   const double mclam = 1e30     ///< clamping value
-                                  ) override {
-        throw std::runtime_error("LoadConstraint_C() not implemented, implicit integrators cannot be used. ");
-    }
+                                  ) override;
 
     /// Assuming   M*a = F(x,v,t) + Cq'*L
     ///         C(x,t) = 0
     /// Increment a vector Qc (usually the residual in a Newton Raphson iteration
     /// for solving an implicit integration step, constraint part) with the term Ct = partial derivative dC/dt:
     ///    Qc += c*Ct
+    /// Default implementation: no explicit constraints, no-op.
     virtual void LoadConstraint_Ct(ChVectorDynamic<>& Qc,  ///< result: the Qc residual, Qc += c*Ct
                                    const double c,         ///< a scaling factor
                                    const double c_vel      ///< scaling factor for constraints at speed level
-                                   ) override {
-        throw std::runtime_error("LoadConstraint_Ct() not implemented, implicit integrators cannot be used. ");
-    }
+                                   ) override;
 
     //
     // OVERRIDE ChIntegrable BASE MEMBERS TO SUPPORT 1st ORDER INTEGRATORS:
@@ -506,8 +517,8 @@ class ChApi ChIntegrableIIorder : public ChIntegrable {
                             ChLumpingParms* lumping = nullptr  ///< use lumped masses to avoid inverting a mass matrix
                             ) override;
 
-    /// Override of method for Ist order implicit integrators.
-    /// This is disabled here because implicit integrators for Ist order cannot be used for a IInd order system.
+    /// Override of method for Ist order implicit integrators, for the 1st order form y = {x,v}, dy/dt = {v,a}.
+    /// Dense solution with H = identity and finite differences of StateSolve (i.e. of StateSolveA).
     virtual bool StateSolveCorrection(ChStateDelta& Dy,
                                       ChVectorDynamic<>& DL,
                                       const ChVectorDynamic<>& R,
@@ -520,14 +531,12 @@ class ChApi ChIntegrableIIorder : public ChIntegrable {
                                       bool force_state_scatter,
                                       UpdateFlags update_flags,
                                       bool call_setup,
-                                      bool call_analyze) override final {
-        throw std::runtime_error(
-            "StateSolveCorrection() not implemented for ChIntegrableIIorder, implicit integrators for Ist order cannot "
-            "be used. ");
-    }
+                                      bool call_analyze) override final;
 
   private:
     using ChIntegrable::StateSetup;
+
+    bool m_default_F_active = false;  ///< guard against recursion between the default LoadResidual_F and StateSolveA
 };
 
 // -----------------------------------------------------------------------------
