@@ -15,6 +15,9 @@
 #ifndef CHFIELDELEMENTTETRAHEDRON4FACE_H
 #define CHFIELDELEMENTTETRAHEDRON4FACE_H
 
+#include <algorithm>
+
+#include "chrono/core/ChQuadrature.h"
 #include "chrono/fea/multiphysics/ChFieldElementTetrahedron4.h"
 #include "chrono/fea/multiphysics/ChField.h"
 #include "chrono/fea/multiphysics/ChFieldData.h"
@@ -79,29 +82,90 @@ public:
             N[i] = N_vol[node_map[i]];
         }
     }
-    virtual void ComputedNde(const ChVector3d eta, ChMatrixDynamic<>& dNde) override { throw std::logic_error("Not implemented, not needed."); }
-    virtual double ComputeJ(const ChVector3d eta, ChMatrix33d& J)  override { 
+    /// Compute the parametric derivatives dN/d(u,v) of the face shape functions (2x3 matrix: rows u, v; columns face
+    /// nodes). They are obtained from the volume derivatives through the chain rule of the face parametrization.
+    virtual void ComputedNde(const ChVector3d eta, ChMatrixDynamic<>& dNde) override {
         ChVector3d eta_vol = ConvertFaceToVolumeCoords(m_face_id, eta);
-        // Compute the volume Jacobian at the face point
+        ChMatrixDynamic<> dNde_vol(3, 4);
+        m_element->ComputedNde(eta_vol, dNde_vol);
+        ChVector3d du;
+        ChVector3d dv;
+        GetFaceTangents(m_face_id, du, dv);
+        auto node_map = GetFaceNodeMapping(m_face_id);
+        dNde.setZero(2, 3);
+        for (int i = 0; i < 3; ++i) {
+            ChVector3d g(dNde_vol(0, node_map[i]), dNde_vol(1, node_map[i]), dNde_vol(2, node_map[i]));
+            dNde(0, i) = Vdot(du, g);
+            dNde(1, i) = Vdot(dv, g);
+        }
+    }
+
+    /// Compute the face Jacobian. Its columns are dX/du, dX/dv and, as auxiliary third column, the unit normal
+    /// (dX/du x dX/dv, normalized). Returns the area scale of the face, |dX/du x dX/dv|.
+    virtual double ComputeJ(const ChVector3d eta, ChMatrix33d& J) override {
+        ChVector3d eta_vol = ConvertFaceToVolumeCoords(m_face_id, eta);
         ChMatrix33d J_vol;
         m_element->ComputeJ(eta_vol, J_vol);
-        std::pair<int, int> used_eta;
-        switch (m_face_id) {
-        case 0: used_eta = { 1, 2 }; break; // Use eta1, eta2
-        case 1: used_eta = { 0, 2 }; break; // Use eta0, eta2  
-        case 2: used_eta = { 0, 1 }; break; // Use eta0, eta1
-        case 3: used_eta = { 0, 1 }; break; // Use eta0, eta1
-        default: used_eta = { 0, 1 };
-        }
-        // Build 3×3 face Jacobian by copying two columns and adding a zero column
-        J.col(0) = J_vol.col(used_eta.first);   // First face direction
-        J.col(1) = J_vol.col(used_eta.second);  // Second face direction  
-        J.col(2) = VNULL.eigen();               // Dummy direction
-        return (Vcross(J.GetAxisX(), J.GetAxisY()).Length()); // shortcut, as J has null column at the rigth
+        ChVector3d du;
+        ChVector3d dv;
+        GetFaceTangents(m_face_id, du, dv);
+        ChVector3d tu(J_vol * du.eigen());
+        ChVector3d tv(J_vol * dv.eigen());
+        ChVector3d n = Vcross(tu, tv);
+        double area = n.Length();
+        J.col(0) = tu.eigen();
+        J.col(1) = tv.eigen();
+        J.col(2) = (area > 0 ? n / area : VNULL).eigen();
+        return area;
     }
-    virtual double ComputeJinv(const ChVector3d eta, ChMatrix33d& Jinv)  override { throw std::logic_error("Not implemented, not needed."); }
-    virtual int GetNumQuadraturePointsForOrder(const int order) const  override { throw std::logic_error("Not implemented, not needed."); }
-    virtual void GetMaterialPointWeight(const int order, const int i, double& weight, ChVector3d& coords) const  override { throw std::logic_error("Not implemented, not needed."); }
+
+    /// Compute the inverse of the face Jacobian from ComputeJ (including the normal column).
+    /// Returns the determinant of the Jacobian.
+    virtual double ComputeJinv(const ChVector3d eta, ChMatrix33d& Jinv) override {
+        ChMatrix33d J;
+        double det = ComputeJ(eta, J);
+        Jinv = (det > 0) ? ChMatrix33d(J.inverse()) : ChMatrix33d(ChMatrix33d::Zero());
+        return det;
+    }
+
+    /// Compute the spatial derivatives dN/dX of the face shape functions (surface gradient, 3x3 matrix with the face
+    /// nodes as columns), as J^{-T} applied to the parametric derivatives. The derivative along the normal is zero.
+    virtual void ComputedNdX(const ChVector3d eta, ChMatrixDynamic<>& dNdX) override {
+        ChMatrixDynamic<> dNde;
+        ComputedNde(eta, dNde);
+        ChMatrix33d Jinv;
+        ComputeJinv(eta, Jinv);
+        ChMatrixDynamic<> dNde3;
+        dNde3.setZero(3, 3);
+        dNde3.topRows(2) = dNde;
+        dNdX = Jinv.transpose() * dNde3;
+    }
+
+    /// Get the number of Gauss points of the triangle quadrature of the given order.
+    virtual int GetNumQuadraturePointsForOrder(const int order) const override {
+        if (order <= 1)
+            return 1;
+        ChQuadratureTablesTriangle* mtables = ChQuadrature::GetStaticTablesTriangle();
+        int o = std::min(order, (int)mtables->Weight.size());
+        return (int)mtables->Weight[o - 1].size();
+    }
+
+    /// Weight and face coordinates (u, v, 0) of the i-th Gauss point of the triangle quadrature of the given order.
+    /// The weights sum to 1/2 (the parametric area), so that sum(weight * ComputeJ) is the face area.
+    virtual void GetMaterialPointWeight(const int order,
+                                        const int i,
+                                        double& weight,
+                                        ChVector3d& coords) const override {
+        if (order <= 1) {
+            coords.Set(CH_1_3, CH_1_3, 0.0);
+            weight = 0.5;
+            return;
+        }
+        ChQuadratureTablesTriangle* mtables = ChQuadrature::GetStaticTablesTriangle();
+        int o = std::min(order, (int)mtables->Weight.size());
+        coords.Set(mtables->LrootsU[o - 1][i], mtables->LrootsV[o - 1][i], 0.0);
+        weight = mtables->Weight[o - 1][i] * 0.5;  // The 1/2 factor is not in the table
+    }
 
 
     virtual bool IsTriangleIntegrationCompatible() const override { return true; }
@@ -128,6 +192,28 @@ private:
         case 2: return ifa2;
         case 3: return ifa3;
         default: return ifa3;
+        }
+    }
+
+    // Utility: derivatives of the volume coordinates with respect to the face coordinates u, v
+    static void GetFaceTangents(int faceId, ChVector3d& du, ChVector3d& dv) {
+        switch (faceId) {
+            case 0:  // (0, u, v)
+                du.Set(0, 1, 0);
+                dv.Set(0, 0, 1);
+                break;
+            case 1:  // (u, 0, v)
+                du.Set(1, 0, 0);
+                dv.Set(0, 0, 1);
+                break;
+            case 2:  // (u, v, 0)
+                du.Set(1, 0, 0);
+                dv.Set(0, 1, 0);
+                break;
+            default:  // (u, v, 1-u-v)
+                du.Set(1, 0, -1);
+                dv.Set(0, 1, -1);
+                break;
         }
     }
 
