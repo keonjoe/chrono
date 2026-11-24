@@ -532,7 +532,8 @@ class ChApiPrecice ChPreciceAdapter {
 
     /// Process added mass data received via preCICE.
     /// Called only if using dynamic added mass on a receiving participant.
-    /// Must be overridden if using dynamic added mass and this is a receiving participant; the default implementation throws in that case.
+    /// The default implementation stores the received blocks, available through GetReceivedAddedMass(); a participant
+    /// that applies the added mass to its solver overrides this function.
     /// `blocks` holds one 6x6 block per FSI body: the increment to that body's self (diagonal) added mass block,
     /// accumulated over all participants that send added mass. The receiving participant adds these increments to its
     /// baseline added mass; increments are not cumulative over time (each call supersedes the previous one).
@@ -540,12 +541,16 @@ class ChApiPrecice ChPreciceAdapter {
 
     /// Prepare added mass data to be sent via preCICE.
     /// Called only if using dynamic added mass on a sending participant.
-    /// Must be overridden if using dynamic added mass and this is a sending participant; the default implementation throws in that case.
+    /// The default implementation leaves all blocks zero, i.e. this participant contributes no added mass increment.
     /// On entry, `blocks` is sized to the number of FSI bodies (as reported by `GetNumFsiBodies`) and is zero-initialized.
     /// The override is expected to set, for every FSI body, this participant's increment to the body's self (diagonal)
     /// added mass block, relative to the baseline added mass held by the receiving participant (typically the
     /// infinite-frequency added mass). Any block left untouched is sent as a zero increment.
     virtual void OnWriteDataAM(std::vector<ChMatrix66d>& blocks);
+
+  public:
+    /// Get the added mass increments (one 6x6 block per FSI body) last received via preCICE.
+    const std::vector<ChMatrix66d>& GetReceivedAddedMass() const { return m_AM_received; }
 
   private:
     /// Create and register the internal exchange meshes for added mass information provided by this participant.
@@ -583,6 +588,7 @@ class ChApiPrecice ChPreciceAdapter {
     std::vector<AddedMassMesh> m_AM_meshes;             ///< added mass meshes provided by this participant
     std::vector<AddedMassChannel> m_AM_read_channels;   ///< added mass input channels
     std::vector<AddedMassChannel> m_AM_write_channels;  ///< added mass output channels (at most one)
+    std::vector<ChMatrix66d> m_AM_received;             ///< added mass increments last received
 };
 
 /// @} precice_module

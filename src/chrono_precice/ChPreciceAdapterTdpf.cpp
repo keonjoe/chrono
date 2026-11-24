@@ -303,6 +303,14 @@ void ChPreciceAdapterTdpf::OnReadData() {
     }
 }
 
+ChVector3d ChPreciceAdapterTdpf::GetSolverGravity() const {
+    return m_sysTDPF->GetGravitationalAcceleration();
+}
+
+void ChPreciceAdapterTdpf::SetSolverGravity(const ChVector3d& gravity) {
+    m_sysTDPF->SetGravitationalAcceleration(gravity);
+}
+
 void ChPreciceAdapterTdpf::OnWriteDataAM(std::vector<ChMatrix66d>& blocks) {
     auto am_blocks = m_sysTDPF->GetInfiniteFrequencyAddedMass();
 

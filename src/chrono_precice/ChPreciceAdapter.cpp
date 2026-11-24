@@ -1182,17 +1182,12 @@ void ChPreciceAdapter::RegisterMeshAM() {
 }
 
 void ChPreciceAdapter::OnReadDataAM(const std::vector<ChMatrix66d>& blocks) {
-    if (!m_AM_read_channels.empty()) {
-        cerr << "\nERROR: OnReadDataAM not implemented." << endl;
-        throw std::runtime_error("OnReadDataAM not implemented");
-    }
+    // Keep the received increments (each call supersedes the previous one).
+    m_AM_received = blocks;
 }
 
 void ChPreciceAdapter::OnWriteDataAM(std::vector<ChMatrix66d>& blocks) {
-    if (!m_AM_write_channels.empty()) {
-        cerr << "\nERROR: OnWriteDataAM not implemented." << endl;
-        throw std::runtime_error("OnWriteDataAM not implemented");
-    }
+    // No added mass increment from this participant: the zero-initialized blocks are sent unchanged.
 }
 
 void ChPreciceAdapter::ReadDataAM() {
