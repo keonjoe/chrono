@@ -134,7 +134,7 @@ class ChApi ChCollisionSystemMulticore : public ChCollisionSystem {
     virtual bool RayHit(const ChVector3d& from, const ChVector3d& to, ChRayhitResult& result) const override;
 
     /// Perform a ray-hit test with the specified collision model.
-    /// Currently NOT implemented.
+    /// Shape positions are those from the last collision detection.
     virtual bool RayHit(const ChVector3d& from,
                         const ChVector3d& to,
                         ChCollisionModel* model,
@@ -170,6 +170,9 @@ class ChApi ChCollisionSystemMulticore : public ChCollisionSystem {
 
     /// Visualize contact points and normals.
     void VisualizeContacts();
+
+    /// Update the body ID of each shape from the current index of its body (indices change when bodies are removed).
+    void UpdateShapeBodyIDs();
 
     std::vector<std::shared_ptr<ChCollisionModelMulticore>> ct_models;
 

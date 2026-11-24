@@ -48,6 +48,14 @@ class ChApi ChRayTest {
                RayHitInfo& info     ///< [output] test result info
     );
 
+    /// Check for intersection of the given ray with the specified collision shapes only (shape IDs in the collision
+    /// data), testing each of them. Returns the closest hit.
+    bool CheckShapes(const real3& start,              ///< ray start point
+                     const real3& end,                ///< ray end point
+                     const std::vector<int>& shapes,  ///< IDs of the shapes to test
+                     RayHitInfo& info                 ///< [output] test result info
+    );
+
     /// Return the number of bins visited by the DDA algorithm during the last ray test.
     uint GetNumBinTests() const { return num_bin_tests; }
 

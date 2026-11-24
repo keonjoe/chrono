@@ -17,6 +17,8 @@
 //
 // =============================================================================
 
+#include <algorithm>
+
 #include "chrono/physics/ChSystem.h"
 #include "chrono/physics/ChBody.h"
 #include "chrono/physics/ChParticleCloud.h"
@@ -183,21 +185,152 @@ void ChCollisionSystemMulticore::Add(std::shared_ptr<ChCollisionModel> model) {
 }
 
 void ChCollisionSystemMulticore::Clear() {
+    // Release all collision model implementations (their destructor detaches them from their models) and empty the
+    // shape data.
     ct_models.clear();
-    //// TODO more here
+
+    auto& sd = cd_data->shape_data;
+    sd.fam_rigid.clear();
+    sd.id_rigid.clear();
+    sd.typ_rigid.clear();
+    sd.local_rigid.clear();
+    sd.start_rigid.clear();
+    sd.length_rigid.clear();
+    sd.ObR_rigid.clear();
+    sd.ObA_rigid.clear();
+    sd.obj_data_A_global.clear();
+    sd.obj_data_R_global.clear();
+    sd.sphere_rigid.clear();
+    sd.box_like_rigid.clear();
+    sd.triangle_rigid.clear();
+    sd.capsule_rigid.clear();
+    sd.rbox_like_rigid.clear();
+    sd.convex_rigid.clear();
+    sd.triangle_global.clear();
+    cd_data->num_rigid_shapes = 0;
+    cd_data->num_rigid_contacts = 0;
 }
 
-#define ERASE_MACRO(x, y) x.erase(x.begin() + y);
-#define ERASE_MACRO_LEN(x, y, z) x.erase(x.begin() + y, x.begin() + y + z);
+// Erase `count` entries starting at `start` from the given per-type shape dimension container and shift the start
+// indices of the remaining shapes of the given `types` stored in that container.
+template <typename T>
+static void EraseShapeData(std::vector<T>& container,
+                           int start,
+                           int count,
+                           shape_container& sd,
+                           const std::vector<int>& types) {
+    if (start < 0 || count <= 0 || start + count > (int)container.size())
+        return;
+    container.erase(container.begin() + start, container.begin() + start + count);
+    for (size_t i = 0; i < sd.typ_rigid.size(); i++) {
+        if (std::find(types.begin(), types.end(), sd.typ_rigid[i]) != types.end() && sd.start_rigid[i] > start)
+            sd.start_rigid[i] -= count;
+    }
+}
 
 void ChCollisionSystemMulticore::Remove(std::shared_ptr<ChCollisionModel> model) {
-    //// TODO
-    std::cerr << "\nChCollisionSystemMulticore::Remove() not yet implemented.\n" << std::endl;
-    throw std::runtime_error("ChCollisionSystemMulticore::Remove() not yet implemented.");
+    if (!model || !model->HasImplementation())
+        return;
+
+    // Locate the multicore model and the range of its shapes in the shape data (models are stored in order of
+    // insertion, each with a contiguous block of shapes).
+    int shape_offset = 0;
+    auto it = ct_models.begin();
+    for (; it != ct_models.end(); ++it) {
+        if ((*it)->model == model.get())
+            break;
+        shape_offset += (int)(*it)->m_shapes.size();
+    }
+    if (it == ct_models.end())
+        return;  // Not in this collision system
+
+    auto ct_model = *it;
+    auto& sd = cd_data->shape_data;
+    int num_shapes = (int)ct_model->m_shapes.size();
+    if (shape_offset + num_shapes > (int)sd.typ_rigid.size())
+        throw std::runtime_error("ChCollisionSystemMulticore::Remove: inconsistent collision shape data.");
+
+    using T = ChCollisionShape::Type;
+    static const std::vector<int> t_sphere = {(int)T::SPHERE};
+    static const std::vector<int> t_box = {(int)T::ELLIPSOID, (int)T::BOX, (int)T::CYLINDER, (int)T::CONE};
+    static const std::vector<int> t_capsule = {(int)T::CAPSULE};
+    static const std::vector<int> t_rbox = {(int)T::ROUNDEDBOX, (int)T::ROUNDEDCYL};
+    static const std::vector<int> t_triangle = {(int)T::TRIANGLE};
+    static const std::vector<int> t_convex = {(int)T::CONVEXHULL};
+
+    // Start of the block of convex hull points of this model (inserted contiguously by Add).
+    int convex_start = -1;
+    for (int k = 0; k < num_shapes; k++) {
+        int i = shape_offset + k;
+        if (sd.typ_rigid[i] == (int)T::CONVEXHULL) {
+            convex_start = sd.start_rigid[i] - (int)ct_model->m_ct_shapes[k]->B.y;
+            break;
+        }
+    }
+
+    // Remove the per-type dimension data of the model shapes (last first, so that start indices stay valid).
+    // The shapes of the model are first flagged with an invalid type so that the start index shift only applies to
+    // the shapes that remain.
+    std::vector<std::pair<int, int>> removed;  // (type, start)
+    for (int k = 0; k < num_shapes; k++) {
+        int i = shape_offset + k;
+        removed.push_back({sd.typ_rigid[i], sd.start_rigid[i]});
+        sd.typ_rigid[i] = -1;
+    }
+    std::sort(removed.begin(), removed.end(),
+              [](const std::pair<int, int>& a, const std::pair<int, int>& b) { return a.second > b.second; });
+    for (const auto& r : removed) {
+        int type = r.first;
+        int start = r.second;
+        if (type == (int)T::SPHERE)
+            EraseShapeData(sd.sphere_rigid, start, 1, sd, t_sphere);
+        else if (std::find(t_box.begin(), t_box.end(), type) != t_box.end())
+            EraseShapeData(sd.box_like_rigid, start, 1, sd, t_box);
+        else if (type == (int)T::CAPSULE)
+            EraseShapeData(sd.capsule_rigid, start, 1, sd, t_capsule);
+        else if (std::find(t_rbox.begin(), t_rbox.end(), type) != t_rbox.end())
+            EraseShapeData(sd.rbox_like_rigid, start, 1, sd, t_rbox);
+        else if (type == (int)T::TRIANGLE)
+            EraseShapeData(sd.triangle_rigid, start, 3, sd, t_triangle);
+    }
+    if (convex_start >= 0)
+        EraseShapeData(sd.convex_rigid, convex_start, (int)ct_model->local_convex_data.size(), sd, t_convex);
+
+    // Remove the per-shape data.
+    auto erase_range = [shape_offset, num_shapes](auto& v) {
+        if ((int)v.size() >= shape_offset + num_shapes)
+            v.erase(v.begin() + shape_offset, v.begin() + shape_offset + num_shapes);
+    };
+    erase_range(sd.fam_rigid);
+    erase_range(sd.id_rigid);
+    erase_range(sd.typ_rigid);
+    erase_range(sd.local_rigid);
+    erase_range(sd.start_rigid);
+    erase_range(sd.length_rigid);
+    erase_range(sd.ObR_rigid);
+    erase_range(sd.ObA_rigid);
+    erase_range(sd.obj_data_A_global);
+    erase_range(sd.obj_data_R_global);
+    sd.triangle_global.resize(sd.triangle_rigid.size());
+    cd_data->num_rigid_shapes -= num_shapes;
+
+    // Contacts found in the last collision detection may refer to removed shapes.
+    cd_data->num_rigid_contacts = 0;
+
+    ct_models.erase(it);
+    model->RemoveImplementation();
 }
 
-#undef ERASE_MACRO
-#undef ERASE_MACRO_LEN
+// Body indices change when bodies are removed from the system: refresh the body ID of every shape.
+void ChCollisionSystemMulticore::UpdateShapeBodyIDs() {
+    auto& id_rigid = cd_data->shape_data.id_rigid;
+    size_t i = 0;
+    for (const auto& ct_model : ct_models) {
+        uint body_id = (uint)ct_model->GetBody()->GetIndex();
+        for (size_t k = 0; k < ct_model->m_shapes.size() && i < id_rigid.size(); k++, i++)
+            id_rigid[i] = body_id;
+    }
+}
 
 // -----------------------------------------------------------------------------
 
@@ -250,6 +383,8 @@ void ChCollisionSystemMulticore::PreProcess() {
 
     cd_data->state_data.num_rigid_bodies = m_num_bodies;
     cd_data->state_data.num_particles = 0;
+
+    UpdateShapeBodyIDs();
 
 #pragma omp parallel for
     for (int i = 0; i < m_num_bodies; i++) {
@@ -599,9 +734,36 @@ bool ChCollisionSystemMulticore::RayHit(const ChVector3d& from,
                                         const ChVector3d& to,
                                         ChCollisionModel* model,
                                         ChRayhitResult& result) const {
-    std::cerr << "ERROR: ray-hit test with a specified collision model not implemented for ChCollisionSystemMulticore."
-              << std::endl;
-    return false;
+    result.hit = false;
+    if (!model)
+        return false;
+
+    // Shapes of the given collision model.
+    std::vector<int> shapes;
+    int shape_offset = 0;
+    for (const auto& ct_model : ct_models) {
+        int n = (int)ct_model->m_shapes.size();
+        if (ct_model->model == model) {
+            for (int k = 0; k < n; k++)
+                shapes.push_back(shape_offset + k);
+            break;
+        }
+        shape_offset += n;
+    }
+    if (shapes.empty())
+        return false;
+
+    ChRayTest tester(cd_data);
+    ChRayTest::RayHitInfo info;
+    if (!tester.CheckShapes(FromChVector(from), FromChVector(to), shapes, info))
+        return false;
+
+    result.hit = true;
+    result.abs_hitNormal = ToChVector(info.normal);
+    result.abs_hitPoint = ToChVector(info.point);
+    result.dist_factor = info.t;
+    result.hitModel = model;
+    return true;
 }
 
 // -----------------------------------------------------------------------------

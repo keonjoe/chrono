@@ -428,6 +428,7 @@ bool ChRayTest::Check(const real3& start, const real3& end, RayHitInfo& info) {
     ConvexShape shape(-1, &cd_data->shape_data);
     real mindist2 = CH_REAL_MAX;
     bool hit = false;
+    int hit_index = -1;
 
     ////std::cout << "Ray start: [" << start.x << "," << start.y << "," << start.z << "]" << std::endl;
     ////std::cout << "Ray end:   [" << end.x << "," << end.y << "," << end.z << "]" << std::endl;
@@ -445,13 +446,15 @@ bool ChRayTest::Check(const real3& start, const real3& end, RayHitInfo& info) {
             num_shape_tests++;
             shape.index = bin_aabb_number[j];
             ////std::cout << "    Test SHAPE: " << shape.index << std::endl;
-            if (CheckShape(shape, start, end, info.normal, mindist2))
+            if (CheckShape(shape, start, end, info.normal, mindist2)) {
                 hit = true;
+                hit_index = shape.index;
+            }
         }
 
         // If a shape in the current bin was hit, stop.
         if (hit) {
-            info.shapeID = shape.index;         // Identifier of closest hit shape
+            info.shapeID = hit_index;           // Identifier of closest hit shape
             info.dist = std::sqrt(mindist2);         // Distance from ray origin
             info.t = info.dist / Length(ray);   // Ray parameter at intersection with closest shape
             info.point = start + info.t * ray;  // Intersection point
@@ -469,6 +472,220 @@ bool ChRayTest::Check(const real3& start, const real3& end, RayHitInfo& info) {
     }
 
     return hit;
+}
+
+// =============================================================================
+
+// Generic ray-convex intersection test using only the support function of the shape (GJK ray cast, G. van den
+// Bergen, "Ray Casting against General Convex Objects with Application to Continuous Collision Detection", 2004).
+
+namespace {
+
+// Closest point to `x` on the segment P[0]-P[1]. The simplex P is reduced to the points of the smallest sub-simplex
+// containing that closest point (its size is returned in `n`).
+real3 closest_on_segment(const real3& x, real3* P, int& n) {
+    real3 ab = P[1] - P[0];
+    real t = Dot(x - P[0], ab);
+    real d = Dot(ab, ab);
+    if (t <= 0 || d <= 0) {
+        n = 1;
+        return P[0];
+    }
+    if (t >= d) {
+        P[0] = P[1];
+        n = 1;
+        return P[0];
+    }
+    return P[0] + (t / d) * ab;
+}
+
+// Closest point to `x` on the triangle P[0]-P[1]-P[2], using Voronoi region tests (C. Ericson, "Real-Time Collision
+// Detection"). The simplex P is reduced to the points of the smallest sub-simplex containing that closest point.
+real3 closest_on_triangle(const real3& x, real3* P, int& n) {
+    const real3 a = P[0];
+    const real3 b = P[1];
+    const real3 c = P[2];
+    real3 ab = b - a;
+    real3 ac = c - a;
+    real3 ap = x - a;
+    real d1 = Dot(ab, ap);
+    real d2 = Dot(ac, ap);
+    if (d1 <= 0 && d2 <= 0) {
+        P[0] = a;
+        n = 1;
+        return a;
+    }
+    real3 bp = x - b;
+    real d3 = Dot(ab, bp);
+    real d4 = Dot(ac, bp);
+    if (d3 >= 0 && d4 <= d3) {
+        P[0] = b;
+        n = 1;
+        return b;
+    }
+    real vc = d1 * d4 - d3 * d2;
+    if (vc <= 0 && d1 >= 0 && d3 <= 0) {
+        real v = d1 / (d1 - d3);
+        P[0] = a;
+        P[1] = b;
+        n = 2;
+        return a + v * ab;
+    }
+    real3 cp = x - c;
+    real d5 = Dot(ab, cp);
+    real d6 = Dot(ac, cp);
+    if (d6 >= 0 && d5 <= d6) {
+        P[0] = c;
+        n = 1;
+        return c;
+    }
+    real vb = d5 * d2 - d1 * d6;
+    if (vb <= 0 && d2 >= 0 && d6 <= 0) {
+        real w = d2 / (d2 - d6);
+        P[0] = a;
+        P[1] = c;
+        n = 2;
+        return a + w * ac;
+    }
+    real va = d3 * d6 - d5 * d4;
+    if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
+        real w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        P[0] = b;
+        P[1] = c;
+        n = 2;
+        return b + w * (c - b);
+    }
+    real denom = va + vb + vc;
+    if (denom == 0) {
+        // Degenerate triangle: fall back on its longest edge
+        n = 2;
+        P[1] = (Length2(c - a) > Length2(b - a)) ? c : b;
+        return closest_on_segment(x, P, n);
+    }
+    real v = vb / denom;
+    real w = vc / denom;
+    return a + v * ab + w * ac;
+}
+
+// Closest point to `x` on the simplex P[0..n-1]. The simplex is reduced to the points of the smallest sub-simplex
+// containing that closest point. Returns false if `x` lies inside a full (4-point) simplex.
+bool closest_on_simplex(const real3& x, real3* P, int& n, real3& closest) {
+    switch (n) {
+        case 1:
+            closest = P[0];
+            return true;
+        case 2:
+            closest = closest_on_segment(x, P, n);
+            return true;
+        case 3:
+            closest = closest_on_triangle(x, P, n);
+            return true;
+        default: {
+            // Tetrahedron: x is inside if it is not on the outer side of any face
+            static const int faces[4][4] = {{0, 1, 2, 3}, {0, 1, 3, 2}, {0, 2, 3, 1}, {1, 2, 3, 0}};
+            bool outside_any = false;
+            real best = CH_REAL_MAX;
+            real3 best_pt = x;
+            real3 best_P[3];
+            int best_n = 0;
+            for (const auto& f : faces) {
+                real3 a = P[f[0]];
+                real3 b = P[f[1]];
+                real3 c = P[f[2]];
+                real3 d = P[f[3]];
+                real3 nrm = Cross(b - a, c - a);
+                real sx = Dot(x - a, nrm);
+                real sd = Dot(d - a, nrm);
+                if (sx * sd >= 0 && sd != 0)
+                    continue;  // x is on the same side as the opposite vertex
+                outside_any = true;
+                real3 T[3] = {a, b, c};
+                int nt = 3;
+                real3 q = closest_on_triangle(x, T, nt);
+                real d2 = Length2(x - q);
+                if (d2 < best) {
+                    best = d2;
+                    best_pt = q;
+                    best_n = nt;
+                    for (int k = 0; k < nt; k++)
+                        best_P[k] = T[k];
+                }
+            }
+            if (!outside_any)
+                return false;
+            n = best_n;
+            for (int k = 0; k < n; k++)
+                P[k] = best_P[k];
+            closest = best_pt;
+            return true;
+        }
+    }
+}
+
+}  // namespace
+
+// Test for intersection between a generic convex shape (defined through its support function) and the specified
+// oriented line segment (from `start` to `end`). An intersection only exists if the square of the distance to the
+// closest point of intersection is less than `mindist2`. If an intersection exists, we return the new `mindist2`,
+// as well as the `normal` to the object at the intersection point.
+static bool convex_ray(const ConvexBase& shape, const real3& start, const real3& end, real3& normal, real& mindist2) {
+    const real3 r = end - start;
+    const real rr = Length2(r);
+    const real eps2 = real(1e-12) * std::max(rr, real(1e-6));
+    const int max_iters = 64;
+
+    real lambda = 0;
+    real3 x = start;
+    real3 n(0);
+    real3 P[4];
+    int np = 0;
+    real3 v = x - mc_utils::TransformSupportVert(&shape, -r, 0);  // Any point of the shape
+    if (Length2(v) <= eps2)
+        v = -r;
+
+    for (int iter = 0; iter < max_iters && Length2(v) > eps2; iter++) {
+        real3 p = mc_utils::TransformSupportVert(&shape, v, 0);
+        real3 w = x - p;
+        real vw = Dot(v, w);
+        if (vw > 0) {
+            real vr = Dot(v, r);
+            if (vr >= 0)
+                return false;  // Ray points away from the separating plane
+            lambda = lambda - vw / vr;
+            if (lambda > 1)
+                return false;  // Shape is beyond the end of the segment
+            x = start + lambda * r;
+            n = v;
+        }
+        // Add p to the simplex (skip duplicates) and find the closest point of its hull to x
+        bool dup = false;
+        for (int k = 0; k < np; k++) {
+            if (Length2(P[k] - p) <= eps2)
+                dup = true;
+        }
+        if (!dup && np < 4)
+            P[np++] = p;
+        real3 c;
+        if (!closest_on_simplex(x, P, np, c))
+            break;  // x is inside the simplex, hence inside the shape
+        real3 vnew = x - c;
+        if (dup && Length2(vnew) >= Length2(v) * (1 - real(1e-10)))
+            break;  // No progress
+        v = vnew;
+    }
+
+    real dist2 = lambda * lambda * rr;
+    if (dist2 > mindist2)
+        return false;
+
+    if (lambda == 0) {
+        // Start point is inside (or on) the shape
+        n = (rr > 0) ? -r : real3(0, 0, 1);
+    }
+    real nl = Length(n);
+    normal = (nl > 0) ? n / nl : real3(0, 0, 1);
+    mindist2 = dist2;
+    return true;
 }
 
 // Narrowphase dispatcher for ray intersection test.  It uses analytical formulaes for known primitive shapes with
@@ -494,9 +711,43 @@ bool ChRayTest::CheckShape(const ConvexBase& shape,
             return triangle_ray(shape.Triangles()[0], shape.Triangles()[1], shape.Triangles()[2], start, end, normal,
                                 mindist2);
         default:
-            //// TODO: fallback on generic ray-convex intersection test
-            return false;
+            // Generic ray-convex intersection test (ellipsoid, cone, rounded box, rounded cylinder, convex hull)
+            return convex_ray(shape, start, end, normal, mindist2);
     }
+}
+
+// Test the ray against the specified shapes only. The closest hit (if any) is returned in `info`.
+bool ChRayTest::CheckShapes(const real3& start,
+                            const real3& end,
+                            const std::vector<int>& shapes,
+                            RayHitInfo& info) {
+    num_bin_tests = 0;
+    num_shape_tests = 0;
+
+    const auto& shape_data = cd_data->shape_data;
+    if (shape_data.obj_data_A_global.size() < shape_data.typ_rigid.size())
+        return false;  // Shape global data not available yet (no collision detection performed)
+
+    ConvexShape shape(-1, &cd_data->shape_data);
+    real mindist2 = CH_REAL_MAX;
+    int hit_index = -1;
+    for (int i : shapes) {
+        if (i < 0 || i >= (int)shape_data.typ_rigid.size())
+            continue;
+        num_shape_tests++;
+        shape.index = i;
+        if (CheckShape(shape, start, end, info.normal, mindist2))
+            hit_index = i;
+    }
+    if (hit_index < 0)
+        return false;
+
+    real3 ray = end - start;
+    info.shapeID = hit_index;
+    info.dist = std::sqrt(mindist2);
+    info.t = info.dist / Length(ray);
+    info.point = start + info.t * ray;
+    return true;
 }
 
 }  // end namespace chrono
