@@ -70,11 +70,9 @@ class ChApi ChLinkRevoluteTranslational : public ChLink {
     virtual ChFrame<> GetFrame2Rel() const override;
 
     /// Get the reaction force and torque on the 1st body, expressed in the link frame 1.
-    /// NOT YET IMPLEMENTED!
     virtual ChWrenchd GetReaction1() const override;
 
     /// Get the reaction force and torque on the 2nd body, expressed in the link frame 2.
-    /// NOT YET IMPLEMENTED!
     virtual ChWrenchd GetReaction2() const override;
 
     /// Get the joint violation (residuals of the constraint equations)
@@ -176,6 +174,9 @@ class ChApi ChLinkRevoluteTranslational : public ChLink {
     virtual void ConstraintsBiLoad_C(double factor = 1, double recovery_clamp = 0.1, bool do_clamp = false) override;
     virtual void LoadConstraintJacobians() override;
     virtual void ConstraintsFetch_react(double factor = 1) override;
+
+    /// Calculate react_force and react_torque from the Lagrange multipliers of the four constraints.
+    void CalculateReactions(double lam_par1, double lam_par2, double lam_dot, double lam_dist);
 
   public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW

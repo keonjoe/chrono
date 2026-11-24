@@ -351,27 +351,8 @@ void ChLinkRevoluteTranslational::IntStateScatterReactions(const unsigned int of
     m_multipliers[2] = L(off_L + 2);
     m_multipliers[3] = L(off_L + 3);
 
-    // Also compute 'intuitive' reactions:
-    ////double lam_par1 = m_multipliers[0];
-    ////double lam_par2 = m_multipliers[1];
-    ////double lam_dot = m_multipliers[2];
-    ////double lam_dist = m_multipliers[3];
-
-    ////
-    //// TODO
-    ////
-
-    // For this joint, we define react_force and react_torque as the reaction force and torque on body 1 (revolute side)
-    // in the link frame 1. This frame is centered at the revolute joint location, has its x axis along the joint
-    // connector and z axis aligned with the revolute axis of rotation.
-
-    react_force.x() = 0;
-    react_force.y() = 0;
-    react_force.z() = 0;
-
-    react_torque.x() = 0;
-    react_torque.y() = 0;
-    react_torque.z() = 0;
+    // Also compute 'intuitive' reactions.
+    CalculateReactions(m_multipliers[0], m_multipliers[1], m_multipliers[2], m_multipliers[3]);
 }
 
 void ChLinkRevoluteTranslational::IntLoadResidual_CqL(const unsigned int off_L,
@@ -500,21 +481,32 @@ void ChLinkRevoluteTranslational::ConstraintsFetch_react(double factor) {
     lam_dot *= factor;
     lam_dist *= factor;
 
-    ////
-    ////  TODO
-    ////
+    CalculateReactions(lam_par1, lam_par2, lam_dot, lam_dist);
+}
 
-    // For this joint, we define react_force and react_torque as the reaction force and torque on body 1 (revolute side)
-    // in the link frame 1. This frame is centered at the revolute joint location, has its x axis along the joint
-    // connector and z axis aligned with the revolute axis of rotation.
+// For this joint, we define react_force and react_torque as the reaction force and torque on body 1 (revolute side) in
+// the link frame 1. This frame is centered at the revolute joint location, has its x axis along the joint connector and
+// z axis aligned with the revolute axis of rotation.
+// The constraint force on body 1 is the generalized force Cq_a' * lambda (summed over the four constraints), with the
+// translational part in the absolute frame and the rotational part in the body (centroidal) frame. It is moved to the
+// joint location and expressed in link frame 1.
+void ChLinkRevoluteTranslational::CalculateReactions(double lam_par1,
+                                                     double lam_par2,
+                                                     double lam_dot,
+                                                     double lam_dist) {
+    ChVectorN<double, 6> Q = lam_par1 * m_cnstr_par1.Get_Cq_a().transpose() +  //
+                             lam_par2 * m_cnstr_par2.Get_Cq_a().transpose() +  //
+                             lam_dot * m_cnstr_dot.Get_Cq_a().transpose() +    //
+                             lam_dist * m_cnstr_dist.Get_Cq_a().transpose();
 
-    react_force.x() = 0;
-    react_force.y() = 0;
-    react_force.z() = 0;
+    ChVector3d force_abs(Q(0), Q(1), Q(2));
+    ChVector3d torque_com_abs = m_body1->TransformDirectionLocalToParent(ChVector3d(Q(3), Q(4), Q(5)));
 
-    react_torque.x() = 0;
-    react_torque.y() = 0;
-    react_torque.z() = 0;
+    ChFrame<> frame1 = GetFrame1Abs();
+    ChVector3d torque_joint_abs = torque_com_abs + Vcross(m_body1->GetPos() - frame1.GetPos(), force_abs);
+
+    react_force = frame1.TransformDirectionParentToLocal(force_abs);
+    react_torque = frame1.TransformDirectionParentToLocal(torque_joint_abs);
 }
 
 // -----------------------------------------------------------------------------
