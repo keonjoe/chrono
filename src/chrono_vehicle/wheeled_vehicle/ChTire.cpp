@@ -72,6 +72,77 @@ void ChTire::Initialize(std::shared_ptr<ChWheel> wheel) {
 }
 
 // -----------------------------------------------------------------------------
+// Tire frame at the contact patch for tires without their own contact patch
+// (rigid and deformable tires), and transformation of a global tire force into it.
+// -----------------------------------------------------------------------------
+bool ChTire::CalculateContactFrame(const ChTerrain* terrain, ChCoordsys<>& frame, double& depth) const {
+    if (!m_wheel)
+        return false;
+
+    WheelState state = m_wheel->GetState();
+    const ChVector3d& C = state.pos;
+    ChVector3d dn = state.rot.GetAxisY();
+    double r = GetRadius();
+    const ChVector3d& up = ChWorldFrame::Vertical();
+    auto voffset = 2 * r * up;
+
+    // Lowest point on the disc in the direction of the world vertical.
+    ChVector3d df = Vcross(dn, up);
+    if (df.Length2() < 1e-12)
+        return false;  // Disc lying flat
+    df.Normalize();
+    ChVector3d B = C + r * Vcross(dn, df);
+
+    // Terrain below that point (horizontal plane through it if no terrain).
+    ChVector3d P = B;
+    ChVector3d n = up;
+    double h = ChWorldFrame::Height(B);
+    float mu;
+    if (terrain)
+        terrain->GetProperties(B + voffset, P, h, n, mu);
+    if (ChWorldFrame::Height(C) <= h)
+        return false;
+    n.Normalize();
+
+    // Lowest point on the disc in the direction of the terrain normal.
+    ChVector3d np = n - Vdot(n, dn) * dn;
+    if (np.Length2() < 1e-12)
+        return false;
+    np.Normalize();
+    ChVector3d Bn = C - r * np;
+
+    // Penetration of that point below the terrain plane (P, n) and its projection onto the plane.
+    depth = Vdot(P - Bn, n);
+    ChVector3d Pc = Bn + depth * n;
+    if (terrain) {
+        terrain->GetProperties(Pc + voffset, Pc, h, n, mu);
+        n.Normalize();
+    }
+
+    // Tire frame: X heading, Z terrain normal.
+    ChVector3d fwd = Vcross(dn, n);
+    if (fwd.Length2() < 1e-12)
+        return false;
+    fwd.Normalize();
+    ChVector3d lat = Vcross(n, fwd);
+    ChMatrix33<> rot(fwd, lat, n);
+    frame.pos = Pc;
+    frame.rot = rot.GetQuaternion();
+
+    return true;
+}
+
+TerrainForce ChTire::TransformToTireFrame(const TerrainForce& global_force, const ChCoordsys<>& frame) {
+    TerrainForce local;
+    local.point = VNULL;
+    local.force = frame.TransformDirectionParentToLocal(global_force.force);
+    // Move the moment from the application point of the global force to the origin of the tire frame.
+    ChVector3d moment = global_force.moment + Vcross(global_force.point - frame.pos, global_force.force);
+    local.moment = frame.TransformDirectionParentToLocal(moment);
+    return local;
+}
+
+// -----------------------------------------------------------------------------
 // Calculate kinematics quantities (slip angle, longitudinal slip, camber angle,
 // and toe-in angle) using the given state of the associated wheel.
 // -----------------------------------------------------------------------------

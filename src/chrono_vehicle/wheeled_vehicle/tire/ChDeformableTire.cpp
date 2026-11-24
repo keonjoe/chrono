@@ -84,8 +84,15 @@ TerrainForce ChDeformableTire::GetTireForce() const {
 }
 
 TerrainForce ChDeformableTire::ReportTireForceLocal(ChTerrain* terrain, ChCoordsys<>& tire_frame) const {
-    std::cerr << "ChDeformableTire::ReportTireForceLocal not implemented." << std::endl;
-    throw std::runtime_error("ChDeformableTire::ReportTireForceLocal not implemented.");
+    // A loaded deformable tire deflects, so its undeformed outer disc reaches below the terrain when in contact.
+    ChCoordsys<> frame;
+    double depth;
+    if (!CalculateContactFrame(terrain, frame, depth) || depth <= 0)
+        return TerrainForce();
+
+    // Resultant of the tire-wheel connection reactions (global frame, at the wheel center) in the tire frame.
+    tire_frame = frame;
+    return TransformToTireFrame(ReportTireForce(terrain), frame);
 }
 
 }  // end namespace vehicle

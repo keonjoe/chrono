@@ -238,6 +238,21 @@ class CH_VEHICLE_API ChTire : public ChPart {
     /// This queries the associated wheel, so it must be called only after the wheel was initialized.
     double GetOffset() const { return m_wheel->m_offset; }
 
+    /// Calculate the tire frame at the contact patch from the current state of the associated wheel.
+    /// Used by tires that interact with the terrain through the Chrono contact system (rigid and deformable tires) and
+    /// hence do not track a contact patch frame. The frame has its origin at the projection onto the terrain of the
+    /// lowest point of the wheel disc (of radius GetRadius()) along the terrain normal, the X axis in the tire heading
+    /// direction and the Z axis along the terrain normal. The terrain is described by its query functions; if no
+    /// terrain is given, a horizontal plane through the lowest point of the disc is assumed. The returned depth is the
+    /// penetration of the undeformed disc into the terrain (positive if the disc reaches below the terrain surface).
+    /// Returns false (frame and depth not set) if the disc is parallel to the terrain or its center below the terrain.
+    bool CalculateContactFrame(const ChTerrain* terrain, ChCoordsys<>& frame, double& depth) const;
+
+    /// Express a tire force given in the global frame (as returned by ReportTireForce) in the given tire frame.
+    /// The returned moment is about the origin of the tire frame and the returned point is that origin (expressed in
+    /// the tire frame, i.e. zero), as for the forces reported by ChForceElementTire::ReportTireForceLocal.
+    static TerrainForce TransformToTireFrame(const TerrainForce& global_force, const ChCoordsys<>& frame);
+
     /// Get the mass added to the associated spindle body.
     /// Certain tires (e.g., those FEA-based) have their own physical representation and hence do not add mass and
     /// inertia to the spindle body. All others increment the spindle body mass by the amount reported by this

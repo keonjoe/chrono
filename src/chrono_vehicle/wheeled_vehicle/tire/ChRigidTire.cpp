@@ -260,8 +260,19 @@ TerrainForce ChRigidTire::ReportTireForce(ChTerrain* terrain) const {
 }
 
 TerrainForce ChRigidTire::ReportTireForceLocal(ChTerrain* terrain, ChCoordsys<>& tire_frame) const {
-    std::cerr << "ChRigidTire::ReportTireForceLocal not implemented." << std::endl;
-    throw std::runtime_error("ChRigidTire::ReportTireForceLocal not implemented.");
+    // Resultant of the contact forces on the tire (global frame, at the spindle center); no force means no contact.
+    TerrainForce global_force = ReportTireForce(terrain);
+    if (global_force.force.Length2() == 0 && global_force.moment.Length2() == 0)
+        return TerrainForce();
+
+    // Express it in the tire frame at the contact patch estimated from the terrain below the wheel.
+    ChCoordsys<> frame;
+    double depth;
+    if (!CalculateContactFrame(terrain, frame, depth))
+        return TerrainForce();
+
+    tire_frame = frame;
+    return TransformToTireFrame(global_force, frame);
 }
 
 // -----------------------------------------------------------------------------

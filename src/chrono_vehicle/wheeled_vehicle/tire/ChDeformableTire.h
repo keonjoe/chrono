@@ -87,7 +87,9 @@ class CH_VEHICLE_API ChDeformableTire : public ChTire {
     virtual void ReadCheckpoint(ChCheckpoint::Format format, const std::string& filename) override;
 
     /// Get the tire force and moment expressed in the tire frame.
-    /// Currently *NOT IMPLEMENTED*.
+    /// This is the force reported by ReportTireForce, expressed in a tire frame estimated from the terrain below the
+    /// wheel (see ChTire::CalculateContactFrame), with the moment about the origin of that frame. Zero force and
+    /// moment (tire frame not set) if the undeformed tire does not reach the terrain surface.
     virtual TerrainForce ReportTireForceLocal(ChTerrain* terrain, ChCoordsys<>& tire_frame) const override;
 
   protected:
