@@ -26,6 +26,8 @@
 //
 // =============================================================================
 
+#include <iostream>
+
 #include "chrono/ChConfig.h"
 
 #include "chrono_vehicle/ChVehicleDataPath.h"
@@ -119,7 +121,6 @@ void MAN_10t::Initialize() {
     switch (m_engineType) {
         case EngineModelType::SHAFTS:
             // engine = chrono_types::make_shared<MAN_7t_EngineShafts>("Engine");
-            std::cout << "EngineModelType::SHAFTS not implemented for this model.\n";
             break;
         case EngineModelType::SIMPLE_MAP:
             engine = chrono_types::make_shared<MAN_7t_EngineSimpleMap>("Engine");
@@ -134,7 +135,6 @@ void MAN_10t::Initialize() {
         switch (m_transmissionType) {
             case TransmissionModelType::AUTOMATIC_SHAFTS:
                 // transmission = chrono_types::make_shared<MAN_7t_AutomaticTransmissionShafts>("Transmission");
-                std::cout << "TransmissionModelType::AUTOMATIC_SHAFTS not implemented for this model.\n";
                 break;
             case TransmissionModelType::AUTOMATIC_SIMPLE_MAP:
                 transmission = chrono_types::make_shared<MAN_7t_AutomaticTransmissionSimpleMap>("Transmission");
@@ -144,9 +144,30 @@ void MAN_10t::Initialize() {
         }
     }
 
+    // Use default engine and transmission models if the requested types are not available for this model.
+    if (!engine) {
+        std::cout << "Engine model type not available for this model, using MAN_7t_EngineSimpleMap.\n";
+        engine = chrono_types::make_shared<MAN_7t_EngineSimpleMap>("Engine");
+    }
+    if (!transmission) {
+        std::cout << "Transmission model type not available for this model, "
+                     "using MAN_7t_AutomaticTransmissionSimpleMap.\n";
+        transmission = chrono_types::make_shared<MAN_7t_AutomaticTransmissionSimpleMap>("Transmission");
+    }
+
     if (engine && transmission) {
         auto powertrain = chrono_types::make_shared<ChPowertrainAssembly>(engine, transmission);
         m_vehicle->InitializePowertrain(powertrain);
+    }
+
+    // Use TMeasy tires if the requested tire type is not available for this model.
+    if (m_tireType != TireModelType::RIGID &&
+        m_tireType != TireModelType::RIGID_MESH &&
+        m_tireType != TireModelType::TMEASY &&
+        m_tireType != TireModelType::TMSIMPLE &&
+        m_tireType != TireModelType::PAC02) {
+        std::cout << "Unsupported Tire Model Type! Switching to TMeasy.\n";
+        m_tireType = TireModelType::TMEASY;
     }
 
     // Create the tires and set parameters depending on type.

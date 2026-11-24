@@ -122,6 +122,14 @@ void Gator::Initialize() {
         m_vehicle->InitializePowertrain(powertrain);
     }
 
+    // Use TMeasy tires if the requested tire type is not available for this model.
+    if (m_tire_type != TireModelType::RIGID &&
+        m_tire_type != TireModelType::RIGID_MESH &&
+        m_tire_type != TireModelType::TMEASY) {
+        std::cout << "Unsupported Tire Model Type! Switching to TMeasy.\n";
+        m_tire_type = TireModelType::TMEASY;
+    }
+
     // Create the tires and set parameters depending on type.
     switch (m_tire_type) {
         case TireModelType::RIGID_MESH:

@@ -17,6 +17,8 @@
 //
 // =============================================================================
 
+#include <iostream>
+
 #include "chrono/ChConfig.h"
 
 #include "chrono_vehicle/ChVehicleDataPath.h"
@@ -120,6 +122,17 @@ void U401::Initialize() {
             break;
         default:
             break;
+    }
+
+    // Use default engine and transmission models if the requested types are not available for this model.
+    if (!engine) {
+        std::cout << "Engine model type not available for this model, using U401_EngineSimpleMap.\n";
+        engine = chrono_types::make_shared<U401_EngineSimpleMap>("Engine");
+    }
+    if (!transmission) {
+        std::cout << "Transmission model type not available for this model, "
+                     "using U401_AutomaticTransmissionSimpleMap.\n";
+        transmission = chrono_types::make_shared<U401_AutomaticTransmissionSimpleMap>("Transmission");
     }
 
     if (engine && transmission) {

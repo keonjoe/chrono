@@ -17,6 +17,8 @@
 //
 // =============================================================================
 
+#include <iostream>
+
 #include "chrono/ChConfig.h"
 
 #include "chrono_vehicle/ChVehicleDataPath.h"
@@ -120,27 +122,35 @@ void FEDA::Initialize() {
     switch (m_engineType) {
         case EngineModelType::SHAFTS:
             // engine = chrono_types::make_shared<FEDA_EngineShafts>("Engine");
-            std::cout << "EngineModelType::SHAFTS not implemented for this model.\n";
             break;
         case EngineModelType::SIMPLE_MAP:
             engine = chrono_types::make_shared<FEDA_EngineSimpleMap>("Engine");
             break;
         case EngineModelType::SIMPLE:
             // engine = chrono_types::make_shared<FEDA_EngineSimple>("Engine");
-            std::cout << "EngineModelType::SIMPLE not implemented for this model.\n";
             break;
     }
 
     switch (m_transmissionType) {
         case TransmissionModelType::AUTOMATIC_SHAFTS:
             // transmission = chrono_types::make_shared<FEDA_AutomaticTransmissionShafts>("Transmission");
-            std::cout << "TransmissionModelType::AUTOMATIC_SHAFTS not implemented for this model.\n";
             break;
         case TransmissionModelType::AUTOMATIC_SIMPLE_MAP:
             transmission = chrono_types::make_shared<FEDA_AutomaticTransmissionSimpleMap>("Transmission");
             break;
         default:
             break;
+    }
+
+    // Use default engine and transmission models if the requested types are not available for this model.
+    if (!engine) {
+        std::cout << "Engine model type not available for this model, using FEDA_EngineSimpleMap.\n";
+        engine = chrono_types::make_shared<FEDA_EngineSimpleMap>("Engine");
+    }
+    if (!transmission) {
+        std::cout << "Transmission model type not available for this model, "
+                     "using FEDA_AutomaticTransmissionSimpleMap.\n";
+        transmission = chrono_types::make_shared<FEDA_AutomaticTransmissionSimpleMap>("Transmission");
     }
 
     if (engine && transmission) {

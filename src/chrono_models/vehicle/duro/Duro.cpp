@@ -17,6 +17,8 @@
 //
 // =============================================================================
 
+#include <iostream>
+
 #include "chrono/ChConfig.h"
 
 #include "chrono_vehicle/ChVehicleDataPath.h"
@@ -120,6 +122,16 @@ void Duro::Initialize() {
             break;
         default:
             break;
+    }
+
+    // Use default engine and transmission models if the requested types are not available for this model.
+    if (!engine) {
+        std::cout << "Engine model type not available for this model, using Duro_EngineShafts.\n";
+        engine = chrono_types::make_shared<Duro_EngineShafts>("Engine");
+    }
+    if (!transmission) {
+        std::cout << "Transmission model type not available for this model, using Duro_AutomaticTransmissionShafts.\n";
+        transmission = chrono_types::make_shared<Duro_AutomaticTransmissionShafts>("Transmission");
     }
 
     if (engine && transmission) {

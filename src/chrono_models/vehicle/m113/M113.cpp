@@ -210,6 +210,17 @@ void M113::Initialize() {
         }
     }
 
+    // Use default engine and transmission models if the requested types are not available for this model.
+    if (!engine) {
+        std::cout << "Engine model type not available for this model, using M113_EngineSimpleMap.\n";
+        engine = chrono_types::make_shared<M113_EngineSimpleMap>("Engine");
+    }
+    if (!transmission) {
+        std::cout << "Transmission model type not available for this model, "
+                     "using M113_AutomaticTransmissionSimpleMap.\n";
+        transmission = chrono_types::make_shared<M113_AutomaticTransmissionSimpleMap>("Transmission");
+    }
+
     if (engine && transmission) {
         auto powertrain = chrono_types::make_shared<ChPowertrainAssembly>(engine, transmission);
         m_vehicle->InitializePowertrain(powertrain);

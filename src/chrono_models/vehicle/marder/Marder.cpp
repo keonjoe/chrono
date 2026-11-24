@@ -17,6 +17,8 @@
 //
 // =============================================================================
 
+#include <iostream>
+
 #include "chrono/ChConfig.h"
 
 #include "chrono_vehicle/ChVehicleDataPath.h"
@@ -131,6 +133,17 @@ void Marder::Initialize() {
             default:
                 break;
         }
+    }
+
+    // Use default engine and transmission models if the requested types are not available for this model.
+    if (!engine) {
+        std::cout << "Engine model type not available for this model, using Marder_EngineSimpleMap.\n";
+        engine = chrono_types::make_shared<Marder_EngineSimpleMap>("Engine");
+    }
+    if (!transmission) {
+        std::cout << "Transmission model type not available for this model, "
+                     "using Marder_AutomaticTransmissionSimpleMap.\n";
+        transmission = chrono_types::make_shared<Marder_AutomaticTransmissionSimpleMap>("Transmission");
     }
 
     if (engine && transmission) {

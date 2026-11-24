@@ -17,6 +17,8 @@
 //
 // =============================================================================
 
+#include <iostream>
+
 #include "chrono/ChConfig.h"
 
 #include "chrono_vehicle/ChVehicleDataPath.h"
@@ -170,6 +172,17 @@ void HMMWV::Initialize() {
             break;
         default:
             break;
+    }
+
+    // Use default engine and transmission models if the requested types are not available for this model.
+    if (!engine) {
+        std::cout << "Engine model type not available for this model, using HMMWV_EngineSimpleMap.\n";
+        engine = chrono_types::make_shared<HMMWV_EngineSimpleMap>("Engine");
+    }
+    if (!transmission) {
+        std::cout << "Transmission model type not available for this model, "
+                     "using HMMWV_AutomaticTransmissionSimpleMap.\n";
+        transmission = chrono_types::make_shared<HMMWV_AutomaticTransmissionSimpleMap>("Transmission");
     }
 
     if (engine && transmission) {

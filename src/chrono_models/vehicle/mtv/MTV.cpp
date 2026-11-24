@@ -17,6 +17,8 @@
 //
 // =============================================================================
 
+#include <iostream>
+
 #include "chrono/ChConfig.h"
 
 #include "chrono_vehicle/ChVehicleDataPath.h"
@@ -124,9 +126,28 @@ void MTV::Initialize() {
         }
     }
 
+    // Use default engine and transmission models if the requested types are not available for this model.
+    if (!engine) {
+        std::cout << "Engine model type not available for this model, using FMTV_EngineSimpleMap.\n";
+        engine = chrono_types::make_shared<FMTV_EngineSimpleMap>("Engine");
+    }
+    if (!transmission) {
+        std::cout << "Transmission model type not available for this model, "
+                     "using FMTV_AutomaticTransmissionSimpleMap.\n";
+        transmission = chrono_types::make_shared<FMTV_AutomaticTransmissionSimpleMap>("Transmission");
+    }
+
     if (engine && transmission) {
         auto powertrain = chrono_types::make_shared<ChPowertrainAssembly>(engine, transmission);
         m_vehicle->InitializePowertrain(powertrain);
+    }
+
+    // Use TMeasy tires if the requested tire type is not available for this model.
+    if (m_tireType != TireModelType::RIGID &&
+        m_tireType != TireModelType::RIGID_MESH &&
+        m_tireType != TireModelType::TMEASY) {
+        std::cout << "Unsupported Tire Model Type! Switching to TMeasy.\n";
+        m_tireType = TireModelType::TMEASY;
     }
 
     // Create the tires and set parameters depending on type.

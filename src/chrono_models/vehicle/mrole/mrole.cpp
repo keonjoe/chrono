@@ -17,6 +17,8 @@
 //
 // =============================================================================
 
+#include <iostream>
+
 #include "chrono/ChConfig.h"
 
 #include "chrono_vehicle/ChVehicleDataPath.h"
@@ -131,9 +133,33 @@ void mrole::Initialize() {
             break;
     }
 
+    // Use default engine and transmission models if the requested types are not available for this model.
+    if (!engine) {
+        std::cout << "Engine model type not available for this model, using mrole_EngineSimpleMap.\n";
+        engine = chrono_types::make_shared<mrole_EngineSimpleMap>("Engine");
+    }
+    if (!transmission) {
+        std::cout << "Transmission model type not available for this model, "
+                     "using mrole_AutomaticTransmissionSimpleMap.\n";
+        transmission = chrono_types::make_shared<mrole_AutomaticTransmissionSimpleMap>("Transmission");
+    }
+
     if (engine && transmission) {
         auto powertrain = chrono_types::make_shared<ChPowertrainAssembly>(engine, transmission);
         m_vehicle->InitializePowertrain(powertrain);
+    }
+
+    // Use TMeasy tires if the requested tire type is not available for this model.
+    if (m_tireType != TireModelType::RIGID &&
+        m_tireType != TireModelType::RIGID_MESH &&
+        m_tireType != TireModelType::FIALA &&
+        m_tireType != TireModelType::TMEASY &&
+        m_tireType != TireModelType::PAC89 &&
+        m_tireType != TireModelType::PAC02 &&
+        m_tireType != TireModelType::ANCF &&
+        m_tireType != TireModelType::REISSNER) {
+        std::cout << "Unsupported Tire Model Type! Switching to TMeasy.\n";
+        m_tireType = TireModelType::TMEASY;
     }
 
     // Create the tires and set parameters depending on type.
