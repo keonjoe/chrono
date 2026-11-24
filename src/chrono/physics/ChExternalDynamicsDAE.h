@@ -94,12 +94,9 @@ class ChApi ChExternalDynamicsDAE : public ChPhysicsItem {
     virtual void SetInitialConditions(ChVectorDynamic<>& y0, ChVectorDynamic<>& yd0) = 0;
 
     /// Calculate and return mass matrix.
-    /// This function must be implemented if the DAE is in implicit form.
-    virtual void CalculateMassMatrix(ChMatrixDynamic<>& M) {
-        if (!InExplicitForm()) {
-            throw std::runtime_error("CalculateMassMatrix required for a DAE in implicit form.");
-        }
-    }
+    /// Used if the DAE is in implicit form. The default implementation assembles M column by column from
+    /// CalculateMassTimesVector if that is provided, and otherwise uses the identity (i.e. the explicit form).
+    virtual void CalculateMassMatrix(ChMatrixDynamic<>& M);
 
     /// Calculate and return the product of the mass matrix and the given vector.
     /// This function is optional and is used only if the DAE is declared in implicit form. If provided, calculate M*v
@@ -119,8 +116,8 @@ class ChApi ChExternalDynamicsDAE : public ChPhysicsItem {
     /// Must load \f$J = alpha * dF/dy + beta * dF/dyd\f$, for given alpha and beta.
     /// Only used if the physics item is declared as stiff.  If provided, load J into the provided matrix 'J'
     /// (already set to zero before the call) and return 'true'. In that case, the user-provided Jacobian will
-    /// overwrite the default finite-difference approximation. Note that a derived class must always implement
-    /// CalculateForceJacobians if the number of derivatives and states are different.
+    /// overwrite the default finite-difference approximation (which perturbs the states through IncrementState when
+    /// the number of derivatives and states are different).
     virtual bool CalculateForceJacobians(double time,                  ///< current time
                                          const ChVectorDynamic<>& y,   ///< current DAE states
                                          const ChVectorDynamic<>& yd,  ///< current DAE state derivatives
@@ -129,9 +126,6 @@ class ChApi ChExternalDynamicsDAE : public ChPhysicsItem {
                                          double beta,                  ///< multiplier for Jacobian wrt yd
                                          ChMatrixDynamic<>& J          ///< output Jacobian matrix
     ) {
-        if (IsStiff() && m_ny != m_nyd) {
-            throw std::runtime_error("CalculateForceJacobians required for a stiff DAE with Ny != Nyd.");
-        }
         return false;
     }
 
@@ -158,14 +152,13 @@ class ChApi ChExternalDynamicsDAE : public ChPhysicsItem {
     }
 
     /// Calculate the Jacobian of the constraints with respect to the DAE states.
+    /// The default implementation uses finite differences of CalculateConstraintViolation (perturbing the states
+    /// through IncrementState).
     virtual void CalculateConstraintJacobian(double time,                 ///< current time
                                              const ChVectorDynamic<>& y,  ///< current DAE states
                                              const ChVectorDynamic<>& c,  ///< current constraint violations
                                              ChMatrixDynamic<>& J         ///< output Jacobian matrix
-    ) {
-        if (m_nc > 0)
-            throw std::runtime_error("CalculateConstraintViolation required if constraints are present.");
-    }
+    );
 
     /// Increment the state vector by the provided vector.
     /// Must calculate x_new = x + Dv. If the number of derivatives is equal to the number of states, this is a simple
@@ -175,6 +168,7 @@ class ChApi ChExternalDynamicsDAE : public ChPhysicsItem {
     virtual void IncrementState(const ChVectorDynamic<>& x, const ChVectorDynamic<>& Dv, ChVectorDynamic<>& x_new) {
         if (m_ny != m_nyd)
             throw std::runtime_error("IncrementState required for a DAE with Ny != Nyd.");
+        x_new = x + Dv;
     }
 
     /// Calculate the increment between the two provided state vectors.
@@ -186,7 +180,8 @@ class ChApi ChExternalDynamicsDAE : public ChPhysicsItem {
                                          const ChVectorDynamic<>& x_new,
                                          ChVectorDynamic<>& Dv) {
         if (m_ny != m_nyd)
-            throw std::runtime_error("IncrementState required for a DAE with Ny != Nyd.");
+            throw std::runtime_error("CalculateStateIncrement required for a DAE with Ny != Nyd.");
+        Dv = x_new - x;
     }
 
     /// Optional operations performed before an update.

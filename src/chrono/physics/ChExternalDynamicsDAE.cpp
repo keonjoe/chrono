@@ -403,11 +403,25 @@ void ChExternalDynamicsDAE::ComputeForceJacobian(double time, double alpha, doub
     // If Jacobian not provided, approximate with finite differences (here, m_ny = m_nyd)
     if (!has_jac) {
         ChVectorDynamic<> F(m_nyd);
-        for (unsigned int i = 0; i < m_nyd; i++) {
-            m_y(i) += m_FD_delta;
-            CalculateForce(time, m_y, m_yd, F);
-            m_J.col(i) += (F - m_F) * (alpha / m_FD_delta);
-            m_y(i) -= m_FD_delta;
+        if (m_ny == m_nyd) {
+            for (unsigned int i = 0; i < m_nyd; i++) {
+                m_y(i) += m_FD_delta;
+                CalculateForce(time, m_y, m_yd, F);
+                m_J.col(i) += (F - m_F) * (alpha / m_FD_delta);
+                m_y(i) -= m_FD_delta;
+            }
+        } else {
+            // States and derivatives of different dimension: perturb the states along each derivative direction
+            ChVectorDynamic<> y0 = m_y;
+            ChVectorDynamic<> dv(m_nyd);
+            for (unsigned int i = 0; i < m_nyd; i++) {
+                dv.setZero();
+                dv(i) = m_FD_delta;
+                IncrementState(y0, dv, m_y);
+                CalculateForce(time, m_y, m_yd, F);
+                m_J.col(i) += (F - m_F) * (alpha / m_FD_delta);
+            }
+            m_y = y0;
         }
         for (unsigned int i = 0; i < m_nyd; i++) {
             m_yd(i) += m_FD_delta;
@@ -429,6 +443,44 @@ void ChExternalDynamicsDAE::ComputeConstraintDerivative(double time) {
         CalculateConstraintViolation(time, m_y, c);
         m_ct = (c - m_c) / m_FD_delta;
         time -= m_FD_delta;
+    }
+}
+
+// -----------------------------------------------------------------------------
+
+void ChExternalDynamicsDAE::CalculateMassMatrix(ChMatrixDynamic<>& M) {
+    M.setZero(m_nyd, m_nyd);
+    ChVectorDynamic<> e(m_nyd);
+    ChVectorDynamic<> Me(m_nyd);
+    for (unsigned int j = 0; j < m_nyd; j++) {
+        e.setZero();
+        e(j) = 1;
+        Me.setZero();
+        if (!CalculateMassTimesVector(e, Me)) {
+            // No mass operator provided: identity mass matrix
+            M.setIdentity(m_nyd, m_nyd);
+            return;
+        }
+        M.col(j) = Me;
+    }
+}
+
+void ChExternalDynamicsDAE::CalculateConstraintJacobian(double time,
+                                                        const ChVectorDynamic<>& y,
+                                                        const ChVectorDynamic<>& c,
+                                                        ChMatrixDynamic<>& J) {
+    if (m_nc == 0)
+        return;
+    J.resize(m_nc, m_nyd);
+    ChVectorDynamic<> dv(m_nyd);
+    ChVectorDynamic<> yp(m_ny);
+    ChVectorDynamic<> cp(m_nc);
+    for (unsigned int i = 0; i < m_nyd; i++) {
+        dv.setZero();
+        dv(i) = m_FD_delta;
+        IncrementState(y, dv, yp);
+        CalculateConstraintViolation(time, yp, cp);
+        J.col(i) = (cp - c) / m_FD_delta;
     }
 }
 
