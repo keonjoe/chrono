@@ -77,6 +77,15 @@ void ChSystemMulticoreNSC::AddMaterialSurfaceData(std::shared_ptr<ChBody> newbod
     data_manager->host_data.cohesion.push_back(0);
 }
 
+void ChSystemMulticoreNSC::RemoveMaterialSurfaceData(int index) {
+    auto& friction = data_manager->host_data.sliding_friction;
+    auto& cohesion = data_manager->host_data.cohesion;
+    if (index < (int)friction.size())
+        friction.erase(friction.begin() + index);
+    if (index < (int)cohesion.size())
+        cohesion.erase(cohesion.begin() + index);
+}
+
 void ChSystemMulticoreNSC::UpdateMaterialSurfaceData(int index, ChBody* body) {
     custom_vector<float>& friction = data_manager->host_data.sliding_friction;
     custom_vector<float>& cohesion = data_manager->host_data.cohesion;

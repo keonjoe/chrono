@@ -18,6 +18,7 @@
 //
 // =============================================================================
 
+#include <algorithm>
 #include <numeric>
 
 #include "chrono/physics/ChShaftBodyConstraint.h"
@@ -243,6 +244,61 @@ void ChSystemMulticore::AddShaft(std::shared_ptr<ChShaft> shaft) {
     data_manager->host_data.shaft_rot.push_back(0);
     data_manager->host_data.shaft_inr.push_back(0);
     data_manager->host_data.shaft_active.push_back(true);
+}
+
+void ChSystemMulticore::RemoveBody(std::shared_ptr<ChBody> body) {
+    auto& bodylist = assembly.bodylist;
+    auto itr = std::find(bodylist.begin(), bodylist.end(), body);
+    if (itr == bodylist.end())
+        return;
+    int index = (int)(itr - bodylist.begin());
+
+    // Remove the collision models (and contacts) and the body from the body list.
+    ChSystem::RemoveBody(body);
+
+    // Remove the body data from the system-wide vectors.
+    auto& hd = data_manager->host_data;
+    auto erase_at = [index](auto& v) {
+        if (index < (int)v.size())
+            v.erase(v.begin() + index);
+    };
+    erase_at(hd.pos_rigid);
+    erase_at(hd.rot_rigid);
+    erase_at(hd.active_rigid);
+    erase_at(hd.collide_rigid);
+    data_manager->num_rigid_bodies--;
+    RemoveMaterialSurfaceData(index);
+
+    // Re-index the remaining bodies.
+    for (size_t i = 0; i < bodylist.size(); i++)
+        bodylist[i]->index = (unsigned int)i;
+
+    m_items_pending = true;
+}
+
+void ChSystemMulticore::RemoveShaft(std::shared_ptr<ChShaft> shaft) {
+    auto& shaftlist = assembly.shaftlist;
+    auto itr = std::find(shaftlist.begin(), shaftlist.end(), shaft);
+    if (itr == shaftlist.end())
+        return;
+    int index = (int)(itr - shaftlist.begin());
+
+    ChSystem::RemoveShaft(shaft);
+
+    auto& hd = data_manager->host_data;
+    auto erase_at = [index](auto& v) {
+        if (index < (int)v.size())
+            v.erase(v.begin() + index);
+    };
+    erase_at(hd.shaft_rot);
+    erase_at(hd.shaft_inr);
+    erase_at(hd.shaft_active);
+    data_manager->num_shafts--;
+
+    for (size_t i = 0; i < shaftlist.size(); i++)
+        shaftlist[i]->index = (unsigned int)i;
+
+    m_items_pending = true;
 }
 
 void ChSystemMulticore::AddLink(std::shared_ptr<ChLinkBase> link) {

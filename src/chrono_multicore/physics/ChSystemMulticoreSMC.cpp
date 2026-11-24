@@ -42,6 +42,23 @@ void ChSystemMulticoreSMC::AddMaterialSurfaceData(std::shared_ptr<ChBody> newbod
     // The contact history slots of this body (MultiStep tangential displacement model) are allocated in Setup.
 }
 
+void ChSystemMulticoreSMC::RemoveMaterialSurfaceData(int index) {
+    auto& hdata = data_manager->host_data;
+    if (index < (int)hdata.mass_rigid.size())
+        hdata.mass_rigid.erase(hdata.mass_rigid.begin() + index);
+
+    // Contact history (MultiStep tangential displacement model): drop the slots of the removed body. The stored
+    // neighbor body and shape IDs of all other slots are no longer valid (bodies are re-indexed and the shapes of
+    // the removed body are removed from the collision system), so the contact history is restarted for all contacts.
+    if (!hdata.shear_neigh.empty()) {
+        size_t num_slots = (size_t)max_shear * data_manager->num_rigid_bodies;
+        hdata.shear_neigh.assign(num_slots, vec3(-1, -1, -1));
+        hdata.shear_disp.assign(num_slots, real3(0, 0, 0));
+        hdata.contact_relvel_init.assign(num_slots, 0);
+        hdata.contact_duration.assign(num_slots, 0);
+    }
+}
+
 void ChSystemMulticoreSMC::UpdateMaterialSurfaceData(int index, ChBody* body) {
     data_manager->host_data.mass_rigid[index] = body->GetMass();
 }

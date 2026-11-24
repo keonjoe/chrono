@@ -58,6 +58,13 @@ class CH_MULTICORE_API ChSystemMulticore : public ChSystem {
     virtual bool AdvanceDynamics(bool do_collision = true) override;
     virtual void AddBody(std::shared_ptr<ChBody> body) override;
     virtual void AddShaft(std::shared_ptr<ChShaft> shaft) override;
+
+    /// Remove a body from the system, together with its data in the system-wide arrays.
+    /// The remaining bodies are re-indexed (their index is their position in the system-wide arrays).
+    virtual void RemoveBody(std::shared_ptr<ChBody> body) override;
+
+    /// Remove a shaft from the system, together with its data in the system-wide arrays.
+    virtual void RemoveShaft(std::shared_ptr<ChShaft> shaft) override;
     virtual void AddLink(std::shared_ptr<ChLinkBase> link) override;
     virtual void AddOtherPhysicsItem(std::shared_ptr<ChPhysicsItem> newitem) override;
 
@@ -74,6 +81,8 @@ class CH_MULTICORE_API ChSystemMulticore : public ChSystem {
 
     virtual void AddMaterialSurfaceData(std::shared_ptr<ChBody> newbody) = 0;
     virtual void UpdateMaterialSurfaceData(int index, ChBody* body) = 0;
+    /// Remove the material surface data of the body with given index (counterpart of AddMaterialSurfaceData).
+    virtual void RemoveMaterialSurfaceData(int index) = 0;
     virtual void Setup() override;
     virtual void SetCollisionSystemType(ChCollisionSystem::Type type) override;
 
@@ -210,6 +219,7 @@ class CH_MULTICORE_API ChSystemMulticoreNSC : public ChSystemMulticore {
     virtual ChContactMethod GetContactMethod() const override { return ChContactMethod::NSC; }
     virtual void AddMaterialSurfaceData(std::shared_ptr<ChBody> newbody) override;
     virtual void UpdateMaterialSurfaceData(int index, ChBody* body) override;
+    virtual void RemoveMaterialSurfaceData(int index) override;
 
     void Add3DOFContainer(std::shared_ptr<Ch3DOFContainer> container);
 
@@ -238,6 +248,7 @@ class CH_MULTICORE_API ChSystemMulticoreSMC : public ChSystemMulticore {
     virtual ChContactMethod GetContactMethod() const override { return ChContactMethod::SMC; }
     virtual void AddMaterialSurfaceData(std::shared_ptr<ChBody> newbody) override;
     virtual void UpdateMaterialSurfaceData(int index, ChBody* body) override;
+    virtual void RemoveMaterialSurfaceData(int index) override;
 
     virtual void Setup() override;
     virtual void SetCollisionSystemType(ChCollisionSystem::Type type) override;
