@@ -16,6 +16,8 @@
 //
 // =============================================================================
 
+#include <algorithm>
+
 #include "chrono/physics/ChContactSMC.h"
 
 namespace chrono {
@@ -70,7 +72,32 @@ ChWrenchd ChDefaultContactForceTorqueSMC::CalculateForceTorque(
 
     switch (contact_model) {
         case ChSystemSMC::Flores:
-            // Currently not implemented.  Fall through to Hooke.
+            // Flores et al. (2011): Hertzian stiffness with hysteresis damping,
+            //   Fn = K * delta^(3/2) * (1 + 8 (1 - cr) / (5 cr) * delta_dot / v0),
+            // with v0 the characteristic impact velocity. The tangential force is as in the Hertz model.
+            if (use_mat_props) {
+                double sqrt_Rd = std::sqrt(eff_radius * delta);
+                double Sn = 2 * mat.E_eff * sqrt_Rd;
+                double St = 8 * mat.G_eff * sqrt_Rd;
+                // Same clamping and tangential stiffness as in the Chrono::Multicore implementation of this model
+                double cr = std::min(std::max((double)mat.cr_eff, 0.01), 1.0 - eps);
+                double loge = std::log(cr);
+                double beta = loge / std::sqrt(loge * loge + CH_PI * CH_PI);
+                double v0 = std::max(sys.GetCharacteristicImpactVelocity(), eps);
+                kn = CH_2_3 * Sn;
+                kt = CH_2_3 * St;
+                gn = kn * delta * 8 * (1 - cr) / (5 * cr * v0);
+                gt = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(St * eff_mass);
+            } else {
+                double tmp = eff_radius * std::sqrt(delta);
+                kn = tmp * mat.kn;
+                kt = tmp * mat.kt;
+                gn = tmp * eff_mass * mat.gn * delta;
+                gt = tmp * eff_mass * mat.gt;
+            }
+
+            break;
+
         case ChSystemSMC::Hooke:
             if (use_mat_props) {
                 double tmp_k = (16.0 / 15) * std::sqrt(eff_radius) * mat.E_eff;
@@ -136,7 +163,9 @@ ChWrenchd ChDefaultContactForceTorqueSMC::CalculateForceTorque(
                 double forceT = mat.mu_eff * std::tanh(5.0 * relvel_t_mag) * forceN;
                 switch (adhesion_model) {
                     case ChSystemSMC::AdhesionForceModel::Perko:
-                        // Currently not implemented.  Fall through to Constant.
+                        // Perko et al. (2001): adhesion = adhesionSPerko * R
+                        forceN -= mat.adhesionSPerko_eff * eff_radius;
+                        break;
                     case ChSystemSMC::AdhesionForceModel::Constant:
                         forceN -= mat.adhesion_eff;
                         break;
@@ -180,7 +209,9 @@ ChWrenchd ChDefaultContactForceTorqueSMC::CalculateForceTorque(
     // Include adhesion force
     switch (adhesion_model) {
         case ChSystemSMC::AdhesionForceModel::Perko:
-            // Currently not implemented.  Fall through to Constant.
+            // Perko et al. (2001): adhesion = adhesionSPerko * R
+            forceN -= mat.adhesionSPerko_eff * eff_radius;
+            break;
         case ChSystemSMC::AdhesionForceModel::Constant:
             forceN -= mat.adhesion_eff;
             break;
