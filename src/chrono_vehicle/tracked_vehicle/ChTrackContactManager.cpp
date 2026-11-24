@@ -16,6 +16,10 @@
 //
 // =============================================================================
 
+#include <algorithm>
+#include <cmath>
+
+#include "chrono/physics/ChContactMaterialSMC.h"
 #include "chrono/physics/ChLoadsBody.h"
 
 #include "chrono_vehicle/tracked_vehicle/ChTrackContactManager.h"
@@ -551,6 +555,90 @@ bool ChTrackCollisionManager::OnNarrowphase(ChCollisionInfo& cinfo) {
 }
 
 // -----------------------------------------------------------------------------
+
+ChVector3d ChTrackCustomContact::ComputeDefaultContactForce(const ChCollisionInfo& cinfo,
+                                                            ChBody& bodyA,
+                                                            ChBody& bodyB) {
+    double delta = -cinfo.distance;  // Overlap
+    if (delta <= 0)
+        return VNULL;
+
+    // Material properties of the two shapes (default SMC properties where not available).
+    static const ChContactMaterialSMC default_mat;
+    auto props = [](const ChCollisionShape* shape, double& E, double& nu, double& mu, double& e) {
+        E = default_mat.GetYoungModulus();
+        nu = default_mat.GetPoissonRatio();
+        mu = default_mat.GetStaticFriction();
+        e = default_mat.GetRestitution();
+        if (!shape)
+            return;
+        auto mat = shape->GetMaterial();
+        if (!mat)
+            return;
+        mu = mat->GetStaticFriction();
+        e = mat->GetRestitution();
+        if (auto smc = std::dynamic_pointer_cast<ChContactMaterialSMC>(mat)) {
+            E = smc->GetYoungModulus();
+            nu = smc->GetPoissonRatio();
+        }
+    };
+    double E1;
+    double nu1;
+    double mu1;
+    double e1;
+    double E2;
+    double nu2;
+    double mu2;
+    double e2;
+    props(cinfo.shapeA, E1, nu1, mu1, e1);
+    props(cinfo.shapeB, E2, nu2, mu2, e2);
+
+    // Composite properties (as in ChContactMaterialCompositeSMC with the default composition strategy).
+    double E_eff = 1 / ((1 - nu1 * nu1) / E1 + (1 - nu2 * nu2) / E2);
+    double G_eff = 1 / (2 * (2 - nu1) * (1 + nu1) / E1 + 2 * (2 - nu2) * (1 + nu2) / E2);
+    double mu = std::min(mu1, mu2);
+    double cr = std::min(e1, e2);
+
+    // Effective mass and radius.
+    double mA = bodyA.IsFixed() ? 0 : bodyA.GetMass();
+    double mB = bodyB.IsFixed() ? 0 : bodyB.GetMass();
+    double m_eff = (mA > 0 && mB > 0) ? mA * mB / (mA + mB) : std::max(mA, mB);
+    double R_eff = cinfo.eff_radius > 0 ? cinfo.eff_radius : ChCollisionInfo::GetDefaultEffectiveCurvatureRadius();
+
+    // Relative velocity of the contact points (B relative to A) and its normal and tangential parts.
+    const ChVector3d& n = cinfo.vN;  // From A to B
+    ChVector3d velA = bodyA.PointSpeedLocalToParent(bodyA.TransformPointParentToLocal(cinfo.vpA));
+    ChVector3d velB = bodyB.PointSpeedLocalToParent(bodyB.TransformPointParentToLocal(cinfo.vpB));
+    ChVector3d relvel = velB - velA;
+    double vn = Vdot(relvel, n);
+    ChVector3d vt = relvel - vn * n;
+
+    // Hertz-Mindlin stiffness and damping (Tsuji damping from the coefficient of restitution).
+    double sqrt_Rd = std::sqrt(R_eff * delta);
+    double Sn = 2 * E_eff * sqrt_Rd;
+    double St = 8 * G_eff * sqrt_Rd;
+    double loge = (cr < 1e-6) ? std::log(1e-6) : std::log(std::min(cr, 1.0 - 1e-6));
+    double beta = loge / std::sqrt(loge * loge + CH_PI * CH_PI);
+    double kn = (2.0 / 3) * Sn;
+    double kt = St;
+    double gn = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(Sn * m_eff);
+    double gt = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(St * m_eff);
+
+    // Normal force (repulsive only).
+    double Fn = kn * delta - gn * vn;
+    if (Fn <= 0)
+        return VNULL;
+
+    // Tangential force (one-step displacement over the current time step), capped by Coulomb friction.
+    double dt = bodyB.GetSystem() ? bodyB.GetSystem()->GetStep() : 0;
+    ChVector3d Ft = -kt * dt * vt - gt * vt;
+    double Ft_max = mu * Fn;
+    double Ft_mag = Ft.Length();
+    if (Ft_mag > Ft_max && Ft_mag > 0)
+        Ft *= Ft_max / Ft_mag;
+
+    return Fn * n + Ft;
+}
 
 void ChTrackCustomContact::Setup() {
     // Calculate contact forces for all current wheel-shoe collisions, calling the user-supplied callback

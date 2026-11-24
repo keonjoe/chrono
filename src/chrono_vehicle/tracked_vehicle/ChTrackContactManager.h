@@ -160,15 +160,18 @@ class CH_VEHICLE_API ChTrackCustomContact : public ChLoadContainer {
     virtual bool SupportsCheckpoint() const override { return false; }
 
     /// Indicate if overriding contact forces with idlers.
-    /// If returning true, the derived class must provide an override of ComputeIdlerContactForce.
+    /// If returning true, the derived class may override ComputeIdlerContactForce (the default is a Hertzian
+    /// penalty contact, see ComputeDefaultContactForce).
     virtual bool OverridesIdlerContact() const { return false; }
 
     /// Indicate if overriding contact forces with road wheels.
-    /// If returning true, the derived class must provide an override of ComputeWheelContactForce.
+    /// If returning true, the derived class may override ComputeWheelContactForce (the default is a Hertzian
+    /// penalty contact, see ComputeDefaultContactForce).
     virtual bool OverridesWheelContact() const { return false; }
 
     /// Indicate if overriding contact forces with ground.
-    /// If returning true, the derived class must provide an override of ComputeGroundContactForce.
+    /// If returning true, the derived class may override ComputeGroundContactForce (the default is a Hertzian
+    /// penalty contact, see ComputeDefaultContactForce).
     virtual bool OverridesGroundContact() const { return false; }
 
     /// For the given collision between an idler and a track shoe, compute the contact force on the track shoe at the
@@ -180,8 +183,7 @@ class CH_VEHICLE_API ChTrackCustomContact : public ChLoadContainer {
         std::shared_ptr<ChBody> shoeBody,   ///< [in] track shoe body in collision
         ChVector3d& forceShoe               ///< [out] force on track shoe at contact point, in abs. frame
     ) {
-        std::cout << "ERROR: Idler-shoe custom contact force calculation not implemented!" << std::endl;
-        throw std::runtime_error("Idler-shoe custom contact force calculation not implemented.");
+        forceShoe = ComputeDefaultContactForce(cinfo, *idlerBody, *shoeBody);
     }
 
     /// For the given collision between a road-wheel and a track shoe, compute the contact force on the track shoe at
@@ -193,8 +195,7 @@ class CH_VEHICLE_API ChTrackCustomContact : public ChLoadContainer {
         std::shared_ptr<ChBody> shoeBody,   ///< [in] track shoe body in collision
         ChVector3d& forceShoe               ///< [out] force on track shoe at contact point, in abs. frame
     ) {
-        std::cout << "ERROR: Wheel-shoe custom contact force calculation not implemented!" << std::endl;
-        throw std::runtime_error("Wheel-shoe custom contact force calculation not implemented.");
+        forceShoe = ComputeDefaultContactForce(cinfo, *wheelBody, *shoeBody);
     }
 
     /// For the given collision between ground and a track shoe, compute the contact force on the track shoe at
@@ -206,9 +207,17 @@ class CH_VEHICLE_API ChTrackCustomContact : public ChLoadContainer {
         std::shared_ptr<ChBody> shoeBody,    ///< [in] track shoe body in collision
         ChVector3d& forceShoe                ///< [out] force on track shoe at contact point, in abs. frame
     ) {
-        std::cout << "ERROR: Ground-shoe custom contact force calculation not implemented!" << std::endl;
-        throw std::runtime_error("Ground-shoe custom contact force calculation not implemented.");
+        forceShoe = ComputeDefaultContactForce(cinfo, *groundBody, *shoeBody);
     }
+
+  protected:
+    /// Calculate the default contact force on body B (second contactable in 'cinfo') at the contact point, expressed in
+    /// the absolute frame. This is a Hertzian normal force with Tsuji damping (from the coefficient of restitution)
+    /// and a one-step tangential (Mindlin) force capped by Coulomb friction, as in the default SMC contact model.
+    /// Material properties are taken from the contact materials of the two collision shapes (for NSC materials, their
+    /// friction and restitution are combined with the default SMC elastic properties). Returns zero if the shapes do
+    /// not overlap.
+    static ChVector3d ComputeDefaultContactForce(const ChCollisionInfo& cinfo, ChBody& bodyA, ChBody& bodyB);
 
   private:
     virtual void Setup() override;
