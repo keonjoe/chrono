@@ -44,6 +44,16 @@ class CH_VEHICLE_API ChSimpleDrivelineXWD : public ChDrivelineWV {
     /// Get the name of the vehicle subsystem template.
     virtual std::string GetTemplateName() const override { return "SimpleDrivelineXWD"; }
 
+    /// Lock/unlock the differential on the specified driven axle (-1 for all axles).
+    /// A locked differential is modeled as a limited-slip differential with a very large torque bias ratio, so that
+    /// the torque goes to the slower wheel as soon as the two wheel speeds differ.
+    virtual void LockAxleDifferential(int axle, bool lock) override;
+
+    /// Lock/unlock the inter-axle torque distribution (the 'which' argument is ignored).
+    /// When locked, the driveshaft torque is distributed with a very large bias towards the slowest axles instead of
+    /// equally over all driven axles.
+    virtual void LockCentralDifferential(int which, bool lock) override;
+
     /// Return the number of driven axles.
     virtual unsigned int GetNumDrivenAxles() const override { return static_cast<int>(m_shaft_left.size()); }
 
@@ -78,6 +88,9 @@ class CH_VEHICLE_API ChSimpleDrivelineXWD : public ChDrivelineWV {
 
   private:
     bool m_connected;
+    std::vector<bool> m_axle_locked;                       ///< differential locked, per driven axle
+    bool m_all_axles_locked;                               ///< all axle differentials locked
+    bool m_central_locked;                                 ///< inter-axle distribution locked
     double m_driveshaft_speed;                             ///< output to transmission
     std::vector<std::shared_ptr<ChShaft> > m_shaft_left;   ///< associated left axles
     std::vector<std::shared_ptr<ChShaft> > m_shaft_right;  ///< associated right axles

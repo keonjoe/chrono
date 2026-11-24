@@ -42,6 +42,11 @@ class CH_VEHICLE_API ChSimpleTrackDriveline : public ChDrivelineTV {
     /// Get the name of the vehicle subsystem template.
     virtual std::string GetTemplateName() const override { return "SimpleTrackDriveline"; }
 
+    /// Lock/unlock the differential.
+    /// A locked differential is modeled as a limited-slip differential with a very large torque bias ratio, so that
+    /// the torque goes to the slower sprocket as soon as the two sprocket speeds differ.
+    virtual void LockDifferential(bool lock) override;
+
     /// Initialize the driveline subsystem.
     /// This function connects this driveline subsystem to the sprockets of the two track assembly subsystems.
     virtual void Initialize(std::shared_ptr<ChChassis> chassis,           ///< associated chassis subsystem
@@ -76,6 +81,7 @@ class CH_VEHICLE_API ChSimpleTrackDriveline : public ChDrivelineTV {
 
   private:
     bool m_connected;
+    bool m_locked;                           ///< differential locked
     double m_driveshaft_speed;               ///< output to transmission
     std::shared_ptr<ChShaft> m_shaft_left;   ///< associated left sprocket shaft
     std::shared_ptr<ChShaft> m_shaft_right;  ///< associated right sprocket shaft

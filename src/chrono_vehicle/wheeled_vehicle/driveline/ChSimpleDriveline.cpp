@@ -30,7 +30,27 @@ namespace vehicle {
 // Construct a default 4WD simple driveline.
 // -----------------------------------------------------------------------------
 ChSimpleDriveline::ChSimpleDriveline(const std::string& name)
-    : ChDrivelineWV(name), m_connected(true), m_driveshaft_speed(0), m_zero_torque(20) {}
+    : ChDrivelineWV(name),
+      m_connected(true),
+      m_front_locked(false),
+      m_rear_locked(false),
+      m_central_locked(false),
+      m_driveshaft_speed(0),
+      m_zero_torque(20) {}
+
+// Torque bias ratio used to model a locked differential.
+static const double kLockedBias = 1e3;
+
+void ChSimpleDriveline::LockAxleDifferential(int axle, bool lock) {
+    if (axle == 0 || axle == -1)
+        m_front_locked = lock;
+    if (axle == 1 || axle == -1)
+        m_rear_locked = lock;
+}
+
+void ChSimpleDriveline::LockCentralDifferential(int which, bool lock) {
+    m_central_locked = lock;
+}
 
 // -----------------------------------------------------------------------------
 // Initialize the driveline subsystem.
@@ -108,9 +128,12 @@ void ChSimpleDriveline::Synchronize(double time, const DriverInputs& driver_inpu
 
     m_driveshaft_speed = alpha * speed_front + (1 - alpha) * speed_rear;
 
-    // Split the input torque front/back.
+    // Split the input torque front/back (fixed fraction, or biased towards the slower axle if the central differential
+    // is locked).
     double torque_front = driveshaft_torque * alpha;
     double torque_rear = driveshaft_torque - torque_front;
+    if (m_central_locked)
+        differentialSplit(driveshaft_torque, kLockedBias, speed_front, speed_rear, torque_front, torque_rear);
 
     torque_front /= GetFrontConicalGearRatio();
     torque_rear /= GetRearConicalGearRatio();
@@ -120,13 +143,13 @@ void ChSimpleDriveline::Synchronize(double time, const DriverInputs& driver_inpu
     double torque_left;
     double torque_right;
 
-    differentialSplit(torque_front, GetFrontDifferentialMaxBias(), m_front_left->GetPosDt(), m_front_right->GetPosDt(),
-                      torque_left, torque_right);
+    differentialSplit(torque_front, m_front_locked ? kLockedBias : GetFrontDifferentialMaxBias(),
+                      m_front_left->GetPosDt(), m_front_right->GetPosDt(), torque_left, torque_right);
     m_front_left->SetAppliedLoad(-torque_left);
     m_front_right->SetAppliedLoad(-torque_right);
 
-    differentialSplit(torque_rear, GetRearDifferentialMaxBias(), m_rear_left->GetPosDt(), m_rear_right->GetPosDt(),
-                      torque_left, torque_right);
+    differentialSplit(torque_rear, m_rear_locked ? kLockedBias : GetRearDifferentialMaxBias(), m_rear_left->GetPosDt(),
+                      m_rear_right->GetPosDt(), torque_left, torque_right);
     m_rear_left->SetAppliedLoad(-torque_left);
     m_rear_right->SetAppliedLoad(-torque_right);
 }

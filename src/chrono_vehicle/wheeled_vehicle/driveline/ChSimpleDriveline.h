@@ -42,6 +42,16 @@ class CH_VEHICLE_API ChSimpleDriveline : public ChDrivelineWV {
     /// Get the name of the vehicle subsystem template.
     virtual std::string GetTemplateName() const override { return "SimpleDriveline"; }
 
+    /// Lock/unlock the differential on the specified axle (0 front, 1 rear; -1 for all axles).
+    /// A locked differential is modeled as a limited-slip differential with a very large torque bias ratio, so that
+    /// the torque goes to the slower wheel as soon as the two wheel speeds differ.
+    virtual void LockAxleDifferential(int axle, bool lock) override;
+
+    /// Lock/unlock the central (front/rear) differential (the 'which' argument is ignored).
+    /// When locked, the driveshaft torque is split between the front and rear axles with a very large torque bias
+    /// towards the slower axle instead of the fixed front torque fraction.
+    virtual void LockCentralDifferential(int which, bool lock) override;
+
     /// Return the number of driven axles.
     virtual unsigned int GetNumDrivenAxles() const final override { return 2; }
 
@@ -91,6 +101,9 @@ class CH_VEHICLE_API ChSimpleDriveline : public ChDrivelineWV {
 
   private:
     bool m_connected;
+    bool m_front_locked;                     ///< front axle differential locked
+    bool m_rear_locked;                      ///< rear axle differential locked
+    bool m_central_locked;                   ///< central differential locked
     double m_zero_torque;                    ///< zero band for motor torque
     double m_driveshaft_speed;               ///< output to transmission
     std::shared_ptr<ChShaft> m_front_left;   ///< associated front left wheel axle

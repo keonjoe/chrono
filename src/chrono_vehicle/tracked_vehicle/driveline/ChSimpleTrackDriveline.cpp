@@ -29,7 +29,14 @@ namespace vehicle {
 // Construct a default simple track driveline.
 // -----------------------------------------------------------------------------
 ChSimpleTrackDriveline::ChSimpleTrackDriveline(const std::string& name)
-    : ChDrivelineTV(name), m_connected(true), m_driveshaft_speed(0) {}
+    : ChDrivelineTV(name), m_connected(true), m_locked(false), m_driveshaft_speed(0) {}
+
+// Torque bias ratio used to model a locked differential.
+static const double kLockedBias = 1e3;
+
+void ChSimpleTrackDriveline::LockDifferential(bool lock) {
+    m_locked = lock;
+}
 
 // -----------------------------------------------------------------------------
 // Initialize the driveline subsystem.
@@ -95,8 +102,8 @@ void ChSimpleTrackDriveline::Synchronize(double time, const DriverInputs& driver
     double torque_left;
     double torque_right;
 
-    differentialSplit(driveshaft_torque, GetDifferentialMaxBias(), m_shaft_left->GetPosDt(), m_shaft_right->GetPosDt(),
-                      torque_left, torque_right);
+    differentialSplit(driveshaft_torque, m_locked ? kLockedBias : GetDifferentialMaxBias(), m_shaft_left->GetPosDt(),
+                      m_shaft_right->GetPosDt(), torque_left, torque_right);
 
     // Include steering.
     double steering = driver_inputs.m_steering;
