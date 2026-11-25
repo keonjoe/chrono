@@ -15,6 +15,7 @@ SET(TESTS
     utest_CH_checkpoint
     utest_CH_spring_jacobians
     utest_CH_nsc_restitution
+    utest_CH_pulley
     utest_CH_solver_apgd
 )
 

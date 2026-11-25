@@ -195,6 +195,12 @@ void ChLinkLockPulley::Update(double time, UpdateFlags update_flags) {
 
         // imposed relative positions/speeds
         deltaC.pos = ChVector3d(-hU, 0, 0);
+        // ChLinkLockLock::UpdateTime overwrites deltaC with the imposed motion laws, so the belt length
+        // must also be imposed through the X motion law
+        if (auto fc = std::dynamic_pointer_cast<ChFunctionConst>(motion_X))
+            fc->SetConstant(-hU);
+        else
+            motion_X = chrono_types::make_shared<ChFunctionConst>(-hU);
         deltaC_dt.pos = VNULL;
         deltaC_dtdt.pos = VNULL;
 
@@ -209,6 +215,7 @@ void ChLinkLockPulley::Update(double time, UpdateFlags update_flags) {
 
 // The total rotations are accumulated from their values at the previous update, so they cannot be recovered from the
 // body states alone. The markers, the imposed belt length and the belt end points are set at updates of visual assets.
+// The imposed belt length is restored both in deltaC and in the X motion law, from which deltaC is recomputed.
 void ChLinkLockPulley::SaveInternalState(ChCheckpointWriter& writer) const {
     ChLinkLockLock::SaveInternalState(writer);
 
@@ -239,6 +246,10 @@ void ChLinkLockPulley::LoadInternalState(ChCheckpointReader& reader) {
     reader.Read(belt_low1);
     reader.Read(belt_low2);
     reader.Read(deltaC.pos);
+    if (auto fc = std::dynamic_pointer_cast<ChFunctionConst>(motion_X))
+        fc->SetConstant(deltaC.pos.x());
+    else
+        motion_X = chrono_types::make_shared<ChFunctionConst>(deltaC.pos.x());
     reader.Read(pos1);
     reader.Read(rot1);
     reader.Read(pos2);
