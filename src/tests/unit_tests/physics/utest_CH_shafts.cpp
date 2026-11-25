@@ -19,11 +19,14 @@
 #include "chrono/physics/ChShaftBodyConstraint.h"
 #include "chrono/physics/ChShaftsClutch.h"
 #include "chrono/physics/ChShaftsGear.h"
+#include "chrono/physics/ChShaftsLoads.h"
+#include "chrono/physics/ChLoadContainer.h"
 #include "chrono/physics/ChShaftsPlanetary.h"
 #include "chrono/physics/ChShaftsTorsionSpring.h"
 
 #include "chrono/physics/ChSystemNSC.h"
 #include "chrono/physics/ChSystemSMC.h"
+#include "chrono/solver/ChDirectSolverLS.h"
 
 #include "gtest/gtest.h"
 
@@ -395,6 +398,67 @@ TEST_P(ChShaftTest, shaft_shaft_shaft) {
     ////          << "     on A: " << planetaryBAC->GetReaction2()
     ////          << "     on B: " << planetaryBAC->GetReaction1()
     ////          << "     on C: " << planetaryBAC->GetTorqueReactionOn3() << "\n\n\n";
+}
+
+// -----------------------------------------------------------------------------
+// Shaft B (inertia J) connected to a fixed shaft A through a torsional spring-damper
+// (stiffness k, damping c). A constant torque T is applied to shaft B.
+//
+//             A                B
+//             *---[ k, c ]---||  T
+//
+// The fixed shaft has no active variables, so the load must act on shaft B only.
+// The spring-damper provides stiffness and damping matrices, so a direct solver is used.
+// With critical damping c = 2*sqrt(k*J), starting from rest, the analytical solution is
+//    rot = T/k * (1 - (1 + w*t) * exp(-w*t)),  with w = sqrt(k/J)
+// -----------------------------------------------------------------------------
+TEST(ChShaft, fixed_shaft_load) {
+    // Parameters
+    double J = 1;                     // inertia of shaft B
+    double k = 100;                   // torsional stiffness
+    double c = 2 * std::sqrt(k * J);  // torsional damping (critical)
+    double T = 2;                     // torque applied to shaft B
+    double w = std::sqrt(k / J);      // natural frequency
+
+    ChSystemSMC sys;
+    sys.SetSolver(chrono_types::make_shared<ChSolverSparseQR>());
+
+    // Add the fixed shaft first, so that its (unused) offset coincides with the offset of shaft B
+    auto shaftA = chrono_types::make_shared<ChShaft>();
+    shaftA->SetFixed(true);
+    sys.Add(shaftA);
+
+    auto shaftB = chrono_types::make_shared<ChShaft>();
+    shaftB->SetInertia(J);
+    shaftB->SetAppliedLoad(T);
+    sys.Add(shaftB);
+
+    auto load_container = chrono_types::make_shared<ChLoadContainer>();
+    sys.Add(load_container);
+
+    auto spring = chrono_types::make_shared<ChShaftsTorsionSpringDamper>(shaftA, shaftB, k, c);
+    load_container->Add(spring);
+
+    // Perform the simulation and verify results.
+    double tol_pos = 2e-3;
+
+    double time_end = 2;
+    double time_step = 1e-3;
+    double time = 0;
+
+    while (time < time_end) {
+        sys.DoStepDynamics(time_step);
+        time += time_step;
+
+        double pos_an = T / k * (1 - (1 + w * time) * std::exp(-w * time));
+
+        ASSERT_NEAR(shaftA->GetPos(), 0.0, 1e-12);
+        ASSERT_NEAR(shaftB->GetPos(), pos_an, tol_pos);
+    }
+
+    // Static equilibrium: rot = T/k
+    ASSERT_NEAR(shaftB->GetPos(), T / k, 1e-5);
+    ASSERT_NEAR(shaftB->GetPosDt(), 0.0, 1e-4);
 }
 
 INSTANTIATE_TEST_SUITE_P(Physics, ChShaftTest, ::testing::Values(ChContactMethod::NSC, ChContactMethod::SMC));

@@ -212,7 +212,8 @@ class ChApi ChShaft : public ChPhysicsItem, public ChLoadable {
     virtual unsigned int GetNumSubBlocks() override { return 1; }
     virtual unsigned int GetSubBlockOffset(unsigned int nblock) override { return GetOffset_w(); }
     virtual unsigned int GetSubBlockSize(unsigned int nblock) override { return 1; }
-    virtual bool IsSubBlockActive(unsigned int nblock) const override { return true; }
+    // Inactive (fixed or sleeping) shafts have no active variables, so no load is applied to them
+    virtual bool IsSubBlockActive(unsigned int nblock) const override { return IsActive(); }
     virtual void LoadableGetVariables(std::vector<ChVariables*>& mvars) override { mvars.push_back(&Variables()); };
 
   private:
