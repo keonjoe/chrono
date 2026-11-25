@@ -806,6 +806,17 @@ class ChApi ChSystem : public ChIntegrableIIorder {
                                  const double c               ///< a scaling factor
                                  ) override;
 
+    /// Increment a vector R with a term that has dF/dv multiplied a given vector w:
+    ///    R += c*dF/dv*w
+    /// The Jacobian dF/dv is obtained from the damping matrices (R = -dF/dv) of the KRM blocks, so only items that
+    /// provide damping matrices contribute, and only if the current solver uses the KRM blocks (consistently with
+    /// StateSolveCorrection; VI solvers other than ADMM do not). Note that this overwrites the contents of the system
+    /// descriptor, which is loaded again by StateSolveCorrection (with call_setup = true).
+    virtual void LoadResidual_dFdv(ChVectorDynamic<>& R,        ///< result: the R residual, R += c*dF/dv*w
+                                   const ChVectorDynamic<>& w,  ///< the w vector
+                                   const double c               ///< a scaling factor
+                                   ) override;
+
     /// Adds the lumped mass to a Md vector, representing a mass diagonal matrix. Used by lumped explicit integrators.
     /// If mass lumping is impossible or approximate, adds scalar error to "error" parameter.
     ///    Md += c*diag(M)    or   Md += c*HRZ(M)

@@ -28,6 +28,7 @@
 #include "chrono/physics/ChSystemSMC.h"
 #include "chrono/physics/ChLinkMate.h"
 #include "chrono/physics/ChLoadContainer.h"
+#include "chrono/solver/ChSolverADMM.h"
 #include "chrono/solver/ChSolverAPGD.h"
 #include "chrono/solver/ChSolverBB.h"
 #include "chrono/solver/ChSolverPJacobi.h"
@@ -1213,6 +1214,45 @@ void ChSystem::LoadResidual_Mv(ChVectorDynamic<>& R, const ChVectorDynamic<>& w,
     // Use also on contact container:
     unsigned int displ_v = off - assembly.offset_w;
     contact_container->IntLoadResidual_Mv(displ_v + contact_container->GetOffset_w(), R, w, c);
+}
+
+// Increment a vector R with the term c*dF/dv*w, using the damping matrices R = -dF/dv of the KRM blocks
+void ChSystem::LoadResidual_dFdv(ChVectorDynamic<>& R, const ChVectorDynamic<>& w, const double c) {
+    if (!descriptor->HasKRMBlocks())
+        return;
+
+    // VI solvers (except ADMM) do not use the KRM blocks, so dF/dv is not part of the system matrix
+    if (std::dynamic_pointer_cast<ChIterativeSolverVI>(solver) && !std::dynamic_pointer_cast<ChSolverADMM>(solver))
+        return;
+
+    // Load the damping matrices only (for ChVariable objects without a ChKRMBlock, exclude the mass)
+    LoadKRMMatrices(0, 1.0, 0);
+    descriptor->SetMassFactor(0.0);
+
+    // w -> variables
+    ChVectorDynamic<> zero_L(GetNumConstraints());
+    zero_L.setZero();
+    ChVectorDynamic<> zero_R(w.size());
+    zero_R.setZero();
+    IntToDescriptor(0, ChStateDelta(w, this), zero_R, 0, zero_L, zero_L);
+
+    // -dF/dv*w (no constraint terms)
+    ChVectorDynamic<> wq;
+    descriptor->FromVariablesToVector(wq, true);
+    ChVectorDynamic<> lq(descriptor->CountActiveConstraints());
+    lq.setZero();
+    ChVectorDynamic<> Rw;
+    descriptor->SystemProductUpper(Rw, wq, lq, false);
+    if (Rw.lpNorm<Eigen::Infinity>() == 0)
+        return;
+
+    // variables -> state vector
+    descriptor->FromVectorToVariables(Rw);
+    ChStateDelta Rw_state;
+    Rw_state.setZero(w.size(), this);
+    IntFromDescriptor(0, Rw_state, 0, zero_L);
+
+    R -= c * Rw_state;
 }
 
 // Adds the lumped mass to a Md vector, representing a mass diagonal matrix. Used by lumped explicit integrators.

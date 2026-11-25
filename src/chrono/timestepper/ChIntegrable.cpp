@@ -414,6 +414,34 @@ void ChIntegrableIIorder::LoadResidual_Mv(ChVectorDynamic<>& R, const ChVectorDy
     R += c * w;
 }
 
+void ChIntegrableIIorder::LoadResidual_dFdv(ChVectorDynamic<>& R, const ChVectorDynamic<>& w, const double c) {
+    const int n = (int)GetNumCoordsVelLevel();
+    double wmax = w.size() > 0 ? w.lpNorm<Eigen::Infinity>() : 0.0;
+    if (n == 0 || wmax == 0)
+        return;
+
+    ChState x(GetNumCoordsPosLevel(), this);
+    ChStateDelta v(n, this);
+    double T = 0;
+    StateGather(x, v, T);
+
+    ChVectorDynamic<> F0(n);
+    F0.setZero();
+    LoadResidual_F(F0, 1.0);
+
+    // dF/dv*w = (F(x, v + h*w) - F(x, v)) / h
+    double h = FDStep(v.lpNorm<Eigen::Infinity>()) / wmax;
+    ChVectorDynamic<> hw = h * w;
+    ChStateDelta vp = v + hw;
+    StateScatter(x, vp, T, UpdateFlags::UPDATE_ALL_NO_VISUAL);
+    ChVectorDynamic<> Fp(n);
+    Fp.setZero();
+    LoadResidual_F(Fp, 1.0);
+    StateScatter(x, v, T, UpdateFlags::UPDATE_ALL_NO_VISUAL);  // Restore the original state
+
+    R += (c / h) * (Fp - F0);
+}
+
 void ChIntegrableIIorder::LoadLumpedMass_Md(ChVectorDynamic<>& Md, double& err, const double c) {
     const int n = (int)GetNumCoordsVelLevel();
     ChVectorDynamic<> e(n);

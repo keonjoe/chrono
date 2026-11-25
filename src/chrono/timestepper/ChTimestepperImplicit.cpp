@@ -559,11 +559,17 @@ void ChTimestepperEulerImplicitLinearized::OnAdvance(double dt) {
     //
     // becomes the Anitescu/Trinkle timestepper:
     //
-    // [ M - dt*dF/dv - dt^2*dF/dx    Cq' ] [ v_new  ] = [ M*(v_old) + dt*f]
+    // [ M - dt*dF/dv - dt^2*dF/dx    Cq' ] [ v_new  ] = [ M*(v_old) + dt*f - dt*dF/dv*v_old ]
     // [ Cq                           0   ] [ -dt*l  ] = [ -C/dt - Ct ]
+    //
+    // Since f is evaluated at v_old, the term -dt*dF/dv*v_old is needed to linearize f about v_old.
+    // Without it, forces that also provide a damping Jacobian (e.g. Rayleigh damping, bushings, spring-dampers)
+    // would be accounted for twice, once in f and once in the left-hand side matrix.
 
-    integrable->LoadResidual_F(R, dt);       // R  = df*f
-    integrable->LoadResidual_Mv(R, V, 1.0);  // R += M*(v_old)
+    integrable->LoadResidual_F(R, dt);         // R  = df*f
+    integrable->LoadResidual_Mv(R, V, 1.0);    // R += M*(v_old)
+    integrable->LoadResidual_dFdv(R, V, -dt);  // R += -dt*dF/dv*v_old
+
     integrable->LoadConstraint_C(Qc, 1.0 / dt, 1.0, Qc_do_clamp,
                                  Qc_clamping);  // Qc = C/dt  (sign will be flipped later in StateSolveCorrection) (for vel constr. Qc = C)
     integrable->LoadConstraint_Ct(Qc, 1.0, dt); // Qc += Ct  (sign will be flipped later in StateSolveCorrection) (for vel constr. Qc += Ct*h)

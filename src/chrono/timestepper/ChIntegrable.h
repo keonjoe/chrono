@@ -402,6 +402,19 @@ class ChApi ChIntegrableIIorder : public ChIntegrable {
                                  const double c               ///< a scaling factor
     );
 
+    /// Assuming   M*a = F(x,v,t) + Cq'*L
+    ///         C(x,t) = 0
+    /// increment a vector R (usually the residual in a Newton Raphson iteration
+    /// for solving an implicit integration step) with a term that has dF/dv multiplied a given vector w:
+    ///    R += c*dF/dv*w
+    /// where dF/dv is the same Jacobian as used by StateSolveCorrection. This is used by integrators that linearize F
+    /// about the current velocity.
+    /// Default implementation: forward difference of LoadResidual_F along w, about the current state (see StateGather).
+    virtual void LoadResidual_dFdv(ChVectorDynamic<>& R,        ///< result: the R residual, R += c*dF/dv*w
+                                   const ChVectorDynamic<>& w,  ///< the w vector
+                                   const double c               ///< a scaling factor
+    );
+
     /// Adds the lumped mass to a Md vector, representing a mass diagonal matrix. Used by lumped explicit integrators.
     /// If mass lumping is impossible or approximate, adds scalar error to "error" parameter.
     ///    Md += c*diag(M)    or   Md += c*HRZ(M)
