@@ -107,10 +107,11 @@ double ChSolverAPGD::Solve(ChSystemDescriptor& sysd) {
 
     // (7) for k := 0 to N_max
     for (m_iterations = 0; m_iterations < m_max_iterations; m_iterations++) {
-        // (8) g = N * y_k + r
+        // (8) g = N * y_k - r
         // (9) gamma_(k+1) = ProjectionOperator(y_k - t_k * g)
         sysd.SchurComplementProduct(g, y);  // g = N * y
-        gammaNew = y - t * (g - r);
+        g -= r;                             // g = N * y - r
+        gammaNew = y - t * g;
         sysd.ConstraintsProject(gammaNew);
 
         // (10) while 0.5 * gamma_(k+1)' * N * gamma_(k+1) + gamma_(k+1)' * r >=
