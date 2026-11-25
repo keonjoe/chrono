@@ -129,8 +129,11 @@ void ChContactNSC::ContIntLoadConstraint_C(const unsigned int off_L,
             double h = container->GetSystem()->GetStep();  // = 1.0 / c;  // not all steppers have c = 1/h
 
             double neg_rebounce_speed = Vrel_cplane.x() * restitution;
+            // Bounce if the contact closes within this step at the current approach speed.
+            // Note: testing with the rebound speed instead would let the SETTLE case clamp the approach speed
+            // first, which reduces the effective restitution coefficient to e/(2-e) for e < 1.
             if (neg_rebounce_speed < -min_rebounce_speed)
-                if (norm_dist + neg_rebounce_speed * h < 0) {
+                if (norm_dist + Vrel_cplane.x() * h < 0) {
                     // CASE: BOUNCE
                     bounced = true;
                     Qc(off_L) += neg_rebounce_speed;
@@ -226,8 +229,11 @@ void ChContactNSC::ConstraintsBiLoad_C(double factor, double recovery_clamp, boo
             double h = 1.0 / factor;  // inverse time step is factor
 
             double neg_rebounce_speed = Vrel_cplane.x() * restitution;
+            // Bounce if the contact closes within this step at the current approach speed.
+            // Note: testing with the rebound speed instead would let the SETTLE case clamp the approach speed
+            // first, which reduces the effective restitution coefficient to e/(2-e) for e < 1.
             if (neg_rebounce_speed < -min_rebounce_speed)
-                if (norm_dist + neg_rebounce_speed * h < 0) {
+                if (norm_dist + Vrel_cplane.x() * h < 0) {
                     // CASE: BOUNCE
                     bounced = true;
                     Nx.SetRightHandSide(Nx.GetRightHandSide() + neg_rebounce_speed);
