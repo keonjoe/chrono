@@ -428,7 +428,13 @@ public:
         descriptor.InsertVariables(&mvariables);
     }
 
-    
+    /// Get the mass lumped at this node from the element mass matrices (computed when the FE models using the node are
+    /// initialized). It does not enter the equations of motion; it is used, e.g., as the mass of contactables.
+    double GetLumpedMass() const { return lumped_mass; }
+
+    /// Set the mass lumped at this node from the element mass matrices.
+    void SetLumpedMass(double mass) { lumped_mass = mass; }
+
 private:
     ChVariablesNode mvariables;
     ChVectorN<double, 3> pos;
@@ -436,6 +442,7 @@ private:
     ChVectorN<double, 3> pos_dtdt;
     ChVectorN<double, 3> F;
     ChVector3d vpos;
+    double lumped_mass = 0;
 };
 
 //--------------------------------------------------------------------------------

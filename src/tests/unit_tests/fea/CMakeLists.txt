@@ -22,6 +22,7 @@ set(TESTS
     utest_FEA_ANCFhexa_3813_9
     utest_FEA_node_accumulators
     utest_FEA_shellBST
+    utest_FEA_smc_contact_energy
 )
 
 if(CH_ENABLE_MODULE_FEA_MULTIPHYSICS)

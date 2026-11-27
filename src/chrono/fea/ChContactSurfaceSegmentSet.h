@@ -136,10 +136,13 @@ class ChApi ChContactSegmentXYZ : public ChContactable {
                                                ChConstraintTuple* jacobian_tuple_V,
                                                bool second) override;
 
-    /// Return mass of contactable object.
+    /// Return mass of contactable object: the total mass of its nodes, with the element mass lumped at the nodes
+    /// (computed when the mesh is initialized), or 1 if not available.
     virtual double GetContactableMass() override {
-        //// TODO
-        return 1;
+        double mass = 0;
+        for (const auto& node : m_nodes)
+            mass += node->GetMass() + node->m_TotalMass;
+        return mass > 0 ? mass : 1;
     }
 
     /// This is only for backward compatibility.
@@ -265,10 +268,13 @@ class ChApi ChContactSegmentXYZRot : public ChContactable /*, public ChLoadableU
                                                ChConstraintTuple* jacobian_tuple_V,
                                                bool second) override;
 
-    /// Return mass of contactable object.
+    /// Return mass of contactable object: the total mass of its nodes, with the element mass lumped at the nodes
+    /// (computed when the mesh is initialized), or 1 if not available.
     virtual double GetContactableMass() override {
-        //// TODO
-        return 1;
+        double mass = 0;
+        for (const auto& node : m_nodes)
+            mass += node->GetMass() + node->m_TotalMass;
+        return mass > 0 ? mass : 1;
     }
 
     /// This is only for backward compatibility.

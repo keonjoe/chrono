@@ -538,6 +538,56 @@ public:
         for (auto& mel : this->element_datamap) {
             mel.first->SetupInitial(this->GetSystem());
         }
+
+        LumpPositionFieldMass();
+    }
+
+    /// Lump the element masses at the nodes of the 3D position fields (used, e.g., as the mass of contactables on the
+    /// model surface), by diagonal scaling of the element mass matrix restricted to the field (HRZ): the mass of a node
+    /// is proportional to the mean of its three diagonal entries, and the nodal masses sum to the element mass (the sum
+    /// of all entries for one direction).
+    void LumpPositionFieldMass() {
+        for (auto& mel : this->element_datamap)
+            for (auto& node_data : mel.second.nodes_data)
+                for (auto data : node_data)
+                    if (auto pos_data = dynamic_cast<ChFieldDataPos3D*>(data))
+                        pos_data->SetLumpedMass(0);
+
+        for (auto& mel : this->element_datamap) {
+            unsigned int num_nodes = mel.first->GetNumNodes();
+            int num_coords = this->GetNumPerNodeCoordsVelLevel() * num_nodes;
+            ChMatrixDynamic<> M(num_coords, num_coords);
+            M.setZero();
+            this->ElementComputeKRMmatrices(mel.first, mel.second, M, 0, 0, 1);
+
+            // Element coordinates are ordered by field, then by node
+            unsigned int stride = 0;
+            for (unsigned int i_field = 0; i_field < this->fields.size(); ++i_field) {
+                unsigned int nfc = this->fields[i_field]->GetNumFieldCoordsVelLevel();
+                if (nfc == 3 && num_nodes > 0 && dynamic_cast<ChFieldDataPos3D*>(mel.second.nodes_data[0][i_field])) {
+                    double mass = 0;
+                    for (unsigned int k = 0; k < 3; k++)
+                        for (unsigned int i = 0; i < num_nodes; i++)
+                            for (unsigned int j = 0; j < num_nodes; j++)
+                                mass += M(stride + 3 * i + k, stride + 3 * j + k);
+                    mass /= 3;
+                    std::vector<double> diag(num_nodes);
+                    double diag_sum = 0;
+                    for (unsigned int i = 0; i < num_nodes; i++) {
+                        unsigned int o = stride + 3 * i;
+                        diag[i] = (M(o, o) + M(o + 1, o + 1) + M(o + 2, o + 2)) / 3;
+                        diag_sum += diag[i];
+                    }
+                    if (mass > 0 && diag_sum > 0) {
+                        for (unsigned int i = 0; i < num_nodes; i++) {
+                            auto pos_data = static_cast<ChFieldDataPos3D*>(mel.second.nodes_data[i][i_field]);
+                            pos_data->SetLumpedMass(pos_data->GetLumpedMass() + mass * diag[i] / diag_sum);
+                        }
+                    }
+                }
+                stride += nfc * num_nodes;
+            }
+        }
     }
 
     virtual void Update(double time, UpdateFlags update_flags) override {

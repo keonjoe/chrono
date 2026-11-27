@@ -132,10 +132,11 @@ class ChApi ChContactNodeXYZ : public ChContactable {
                                                ChConstraintTuple* jacobian_tuple_V,
                                                bool second) override;
 
+    /// Return the mass of the node: its own mass plus the element mass lumped at the node (computed when the mesh is
+    /// initialized), or 1 if neither is available.
     virtual double GetContactableMass() override {
-        //// TODO !!!!!!!!!!!!!!!!!!!!
-        return 1;
-        // return this->m_node->GetMass(); // no!! could be zero in nodes of non-lumped-masses meshes!
+        double mass = m_node->GetMass() + m_node->m_TotalMass;
+        return mass > 0 ? mass : 1;
     }
 
     /// This is only for backward compatibility.
@@ -251,10 +252,11 @@ class ChApi ChContactNodeXYZRot : public ChContactable {
                                                ChConstraintTuple* jacobian_tuple_V,
                                                bool second) override;
 
+    /// Return the mass of the node: its own mass plus the element mass lumped at the node (computed when the mesh is
+    /// initialized), or 1 if neither is available.
     virtual double GetContactableMass() override {
-        //// TODO !!!!!!!!!!!!!!!!!!!!
-        return 1;
-        // return m_node->GetMass(); // no!! could be zero in nodes of non-lumped-masses meshes!
+        double mass = m_node->GetMass() + m_node->m_TotalMass;
+        return mass > 0 ? mass : 1;
     }
 
     /// This is only for backward compatibility.
@@ -364,10 +366,11 @@ class ChApi ChContactNodeFieldXYZ : public ChContactable {
                                                ChConstraintTuple* jacobian_tuple_V,
                                                bool second) override;
 
+    /// Return the mass lumped at the node from the element mass matrices (computed when the FE model is initialized),
+    /// or 1 if not available.
     virtual double GetContactableMass() override {
-        //// TODO !!!!!!!!!!!!!!!!!!!!
-        return 1;
-        // return this->m_node->GetMass(); // no!! could be zero in nodes of non-lumped-masses meshes!
+        double mass = m_field_data->GetLumpedMass();
+        return mass > 0 ? mass : 1;
     }
 
     /// This is only for backward compatibility.

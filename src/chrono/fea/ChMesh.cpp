@@ -34,6 +34,53 @@
 namespace chrono {
 namespace fea {
 
+// Add the element mass lumped at its nodes to the nodal masses, by diagonal scaling of the element mass matrix (HRZ,
+// Hinton, Rock and Zienkiewicz, 1976): the mass of a node is proportional to the mean of the diagonal entries of the
+// mass matrix for its three translational coordinates, and the nodal masses sum to the translational mass of the
+// element (the sum of all entries of the mass matrix for one translational direction). Unlike row-sum lumping, this
+// gives positive nodal masses also for quadratic elements. The first three coordinates of each node used by the
+// element must be its position, as for ChNodeFEAxyz, ChNodeFEAxyzrot (translation, then rotation) and the ANCF nodes
+// ChNodeFEAxyzD, ChNodeFEAxyzDD and ChNodeFEAxyzDDD (position, then gradients). Elements whose nodes have fewer than
+// three coordinates are skipped.
+static void LumpElementMass(ChElementBase& element) {
+    unsigned int num_nodes = element.GetNumNodes();
+    unsigned int num_coords = element.GetNumCoordsPosLevel();
+    std::vector<unsigned int> offset(num_nodes);
+    unsigned int off = 0;
+    for (unsigned int i = 0; i < num_nodes; i++) {
+        offset[i] = off;
+        if (element.GetNodeNumCoordsPosLevel(i) < 3)
+            return;
+        off += element.GetNodeNumCoordsPosLevel(i);
+    }
+    if (off != num_coords || num_nodes == 0)
+        return;
+
+    ChMatrixDynamic<> M(num_coords, num_coords);
+    M.setZero();
+    element.ComputeMmatrixGlobal(M);
+
+    double mass = 0;
+    for (unsigned int k = 0; k < 3; k++)
+        for (unsigned int i = 0; i < num_nodes; i++)
+            for (unsigned int j = 0; j < num_nodes; j++)
+                mass += M(offset[i] + k, offset[j] + k);
+    mass /= 3;
+
+    std::vector<double> diag(num_nodes);
+    double diag_sum = 0;
+    for (unsigned int i = 0; i < num_nodes; i++) {
+        unsigned int o = offset[i];
+        diag[i] = (M(o, o) + M(o + 1, o + 1) + M(o + 2, o + 2)) / 3;
+        diag_sum += diag[i];
+    }
+    if (!(mass > 0) || !(diag_sum > 0))
+        return;
+
+    for (unsigned int i = 0; i < num_nodes; i++)
+        element.GetNode(i)->m_TotalMass += mass * diag[i] / diag_sum;
+}
+
 ChMesh::ChMesh(const ChMesh& other) : ChIndexedNodes(other) {
     vnodes = other.vnodes;
     velements = other.velements;
@@ -68,6 +115,22 @@ void ChMesh::InitializeChildren(InitPhase phase) {
             element->SetupInitial(GetSystem());
             element->m_initialized = true;
         }
+    }
+
+    // Lump the element masses at the nodes (used, e.g., as the mass of contactables on the mesh surface).
+    // Elements that do not provide their own lumping are lumped from their mass matrix.
+    for (auto& node : vnodes)
+        node->m_TotalMass = 0;
+    for (auto& element : velements) {
+        double nodal_mass = 0;
+        for (unsigned int i = 0; i < element->GetNumNodes(); i++)
+            nodal_mass += element->GetNode(i)->m_TotalMass;
+        element->ComputeNodalMass();
+        double nodal_mass_new = 0;
+        for (unsigned int i = 0; i < element->GetNumNodes(); i++)
+            nodal_mass_new += element->GetNode(i)->m_TotalMass;
+        if (nodal_mass_new == nodal_mass)
+            LumpElementMass(*element);
     }
 }
 

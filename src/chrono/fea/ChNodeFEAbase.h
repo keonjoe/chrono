@@ -75,7 +75,7 @@ class ChApi ChNodeFEAbase : public virtual ChNodeBase {
     /// Load the internal state of this node, as saved by SaveInternalState.
     virtual void LoadInternalState(ChCheckpointReader& reader) {}
 
-    double m_TotalMass;  ///< Nodal mass obtained from element mass matrix
+    double m_TotalMass = 0;  ///< Nodal mass obtained from element mass matrix
 
   protected:
     unsigned int g_index;  ///< global node index
