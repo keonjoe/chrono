@@ -31,6 +31,39 @@ CH_UPCASTING(ChBody, ChBodyFrame)
 CH_UPCASTING(ChBody, ChContactable)
 CH_UPCASTING(ChBody, ChLoadableUVW)
 
+// True if the system integrator evaluates the forces once per step, at the beginning of the step, and obtains the new
+// velocities from a single linear solve. A velocity-dependent force without Jacobian in the system matrix, such as the
+// gyroscopic torque, is then integrated explicitly.
+static bool UsesSingleForceEvaluation(const ChSystem* sys) {
+    if (!sys || !sys->GetTimestepper())
+        return false;
+    switch (sys->GetTimestepperType()) {
+        case ChTimestepper::Type::EULER_SEMI_IMPLICIT:
+        case ChTimestepper::Type::EULER_IMPLICIT_LINEARIZED:
+        case ChTimestepper::Type::EULER_IMPLICIT_PROJECTED:
+        case ChTimestepper::Type::TRAPEZOIDAL_LINEARIZED:
+            return true;
+        default:
+            return false;
+    }
+}
+
+// Linearly implicit gyroscopic torque over a step h, for inertia J, angular velocity w and other torques t (body frame).
+// Kahan's discretization of Euler's equations, J*(w_new - w) = h*t - h/2*(w x J*w_new + w_new x J*w), is linear in
+// w_new: (J + h/2*G)*w_new = J*w + h*t, with G = [w]x*J - [J*w]x the Jacobian of w x J*w. The end-of-step velocity is
+// predicted from this equation, so that the returned torque reproduces the Kahan step when t is the torque applied in
+// the step, and reduces to w x J*w for a steady rotation (t = w x J*w). The solution is singular for h*|w| of order 2;
+// in that case, fall back to the explicit torque.
+static ChVector3d LinearlyImplicitGyro(const ChMatrix33<>& J, const ChVector3d& w, const ChVector3d& t, double h) {
+    ChVector3d Jw = J * w;
+    ChMatrix33<> A = J + (0.5 * h) * (ChStarMatrix33<>(w) * J - ChStarMatrix33<>(Jw));
+    if (!(A.determinant() > 0.5 * J.determinant()))
+        return Vcross(w, Jw);
+    ChMatrix33<> A_inv = A.inverse();
+    ChVector3d w_new = A_inv * (Jw + h * t);
+    return 0.5 * (Vcross(w, J * w_new) + Vcross(w_new, Jw));
+}
+
 ChBody::ChBody()
     : index(0),
       fixed(false),
@@ -75,6 +108,7 @@ ChBody::ChBody(const ChBody& other) : ChPhysicsItem(other), ChBodyFrame(other) {
     m_contactable_variables.push_back(&variables);
 
     gyro = other.gyro;
+    nongyro_torque = other.nongyro_torque;
 
     RemoveAllForces();   // also copy-duplicate the forces? Let the user handle this..
     RemoveAllMarkers();  // also copy-duplicate the markers? Let the user handle this..
@@ -137,6 +171,18 @@ void ChBody::IntStateGatherAcceleration(const unsigned int off_a, ChStateDelta& 
 void ChBody::IntStateScatterAcceleration(const unsigned int off_a, const ChStateDelta& a) {
     SetPosDt2(a.segment(off_a + 0, 3));
     SetAngAccLocal(a.segment(off_a + 3, 3));
+
+    // With integrators that evaluate the forces once per step, the acceleration is (w_new - w_old)/h. Store the torque
+    // other than the gyroscopic one in this step (applied, reaction and contact torques), J*a + gyro(w_old), for the
+    // prediction of the end-of-step velocity in the next step (see ComputeGyro).
+    if (UsesSingleForceEvaluation(system)) {
+        double h = system->GetStep();
+        ChVector3d acc(a.segment(off_a + 3, 3));
+        ChVector3d w_old = GetAngVelLocal() - h * acc;
+        const ChMatrix33<>& J = variables.GetBodyInertia();
+        nongyro_torque = J * acc + LinearlyImplicitGyro(J, w_old, nongyro_torque, h);
+        ComputeGyro();
+    }
 }
 
 void ChBody::IntStateIncrement(const unsigned int off_x,  // offset in x state vector
@@ -420,7 +466,10 @@ void ChBody::ComputeQInertia(ChMatrix44<>& mQInertia) {
 
 void ChBody::ComputeGyro() {
     ChVector3d Wvel = GetAngVelLocal();
-    gyro = Vcross(Wvel, variables.GetBodyInertia() * Wvel);
+    if (UsesSingleForceEvaluation(system))
+        gyro = LinearlyImplicitGyro(variables.GetBodyInertia(), Wvel, nongyro_torque, system->GetStep());
+    else
+        gyro = Vcross(Wvel, variables.GetBodyInertia() * Wvel);
 }
 
 bool ChBody::TrySleeping() {

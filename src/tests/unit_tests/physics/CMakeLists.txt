@@ -17,6 +17,7 @@ SET(TESTS
     utest_CH_nsc_restitution
     utest_CH_pulley
     utest_CH_euler_linearized_damping
+    utest_CH_gyroscopic_torque
     utest_CH_solver_apgd
     utest_CH_solver_vi
 )

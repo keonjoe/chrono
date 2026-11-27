@@ -290,6 +290,14 @@ class ChApi ChBody : public ChPhysicsItem, public ChBodyFrame, public ChContacta
     /// speed, the gyroscopic torque isn't automatically updated each time a
     /// SetCoordsys() or SetCoordsysDt() etc. is called, but only if necessary,
     /// for each UpdateState().
+    /// With integrators that evaluate the forces once per step, at the beginning of the step (linearized and projected
+    /// implicit Euler, linearized trapezoidal, semi-implicit Euler), the gyroscopic torque w x J*w is replaced by its
+    /// linearly implicit (Kahan) discretization over the system step h:
+    ///    0.5 * (w x J*w_new + w_new x J*w),
+    /// where w_new is the end-of-step angular velocity predicted from (J + h/2*G) * w_new = J*w + h*t, with
+    /// G = [w]x*J - [J*w]x the Jacobian of w x J*w and t the other torques on the body in the previous step. Otherwise
+    /// the free nutation of a body that does not spin about a principal axis of inertia is integrated with explicit Euler
+    /// and grows without bound. For a torque-free body, the step neither amplifies nor damps the nutation, for any h.
     void ComputeGyro();
 
     // UPDATE FUNCTIONS
@@ -608,6 +616,9 @@ class ChApi ChBody : public ChPhysicsItem, public ChBodyFrame, public ChContacta
     bool allow_sleeping;      ///< flag indicating whether or not the body can go to sleep mode
     bool candidate_sleeping;  ///< flag indicating whether or not the body is a candidate for sleep mode in the current
                               ///< simulation
+
+    ChVector3d nongyro_torque;  ///< torques other than the gyroscopic torque in the last step (body frame), used to
+                                ///< predict the end-of-step angular velocity in ComputeGyro()
 
     // Friend classes with private access
     friend class ChSystem;
