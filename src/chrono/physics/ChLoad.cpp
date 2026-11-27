@@ -137,6 +137,9 @@ void ChLoad::ComputeJacobian(ChState* state_x, ChStateDelta* state_w) {
         Jcolumn = (Q1 - Q0) * (-1.0 / Delta);  // - sign because R=-dQ/dv
         m_jacobians->R.block(0, i, mrows_w, 1) = Jcolumn;
     }
+
+    // Restore the load at the unperturbed state, which is the one used in the residual
+    loader->Q = Q0;
 }
 
 void ChLoad::LoadIntLoadResidual_F(ChVectorDynamic<>& R, double c) {
@@ -275,6 +278,9 @@ void ChLoadCustom::ComputeJacobian(ChState* state_x, ChStateDelta* state_w) {
         Jcolumn = (Q1 - Q0) * (-1.0 / Delta);  // - sign because R=-dQ/dv
         m_jacobians->R.block(0, i, mrows_w, 1) = Jcolumn;
     }
+
+    // Restore the load at the unperturbed state, which is the one used in the residual
+    load_Q = Q0;
 }
 
 void ChLoadCustom::LoadIntLoadResidual_F(ChVectorDynamic<>& R, const double c) {
@@ -456,6 +462,9 @@ void ChLoadCustomMultiple::ComputeJacobian(ChState* state_x, ChStateDelta* state
         Jcolumn = (Q1 - Q0) * (-1.0 / Delta);  // - sign because R=-dQ/dv
         m_jacobians->R.block(0, i, mrows_w, 1) = Jcolumn;
     }
+
+    // Restore the load at the unperturbed state, which is the one used in the residual
+    load_Q = Q0;
 }
 
 void ChLoadCustomMultiple::LoadIntLoadResidual_F(ChVectorDynamic<>& R, const double c) {
