@@ -218,6 +218,8 @@ void ViperPart::Construct(ChSystem* system) {
     if (m_visualize) {
         auto vis_mesh_file = GetChronoDataFile("robot/viper/obj/" + m_mesh_name + ".obj");
         auto trimesh_vis = ChTriangleMeshConnected::CreateFromWavefrontFile(vis_mesh_file, true, true);
+        if (!trimesh_vis)
+            throw std::invalid_argument("Cannot load mesh file " + vis_mesh_file);
         trimesh_vis->Transform(m_mesh_xform.GetPos(), m_mesh_xform.GetRotMat());  // translate/rotate/scale mesh
         trimesh_vis->RepairDuplicateVertices(1e-9);                               // if meshes are not watertight
 
@@ -231,6 +233,8 @@ void ViperPart::Construct(ChSystem* system) {
     if (m_collide) {
         auto col_mesh_file = GetChronoDataFile("robot/viper/col/" + m_mesh_name + ".obj");
         auto trimesh_col = ChTriangleMeshConnected::CreateFromWavefrontFile(col_mesh_file, false, false);
+        if (!trimesh_col)
+            throw std::invalid_argument("Cannot load mesh file " + col_mesh_file);
         trimesh_col->Transform(m_mesh_xform.GetPos(), m_mesh_xform.GetRotMat());  // translate/rotate/scale mesh
         trimesh_col->RepairDuplicateVertices(1e-9);                               // if meshes are not watertight
 
@@ -245,6 +249,8 @@ void ViperPart::Construct(ChSystem* system) {
 void ViperPart::CalcMassProperties(double density) {
     auto mesh_filename = GetChronoDataFile("robot/viper/col/" + m_mesh_name + ".obj");
     auto trimesh_col = ChTriangleMeshConnected::CreateFromWavefrontFile(mesh_filename, false, false);
+    if (!trimesh_col)
+        throw std::invalid_argument("Cannot load mesh file " + mesh_filename);
     trimesh_col->Transform(m_mesh_xform.GetPos(), m_mesh_xform.GetRotMat());  // translate/rotate/scale mesh
     trimesh_col->RepairDuplicateVertices(1e-9);                               // if meshes are not watertight
 

@@ -62,13 +62,17 @@ ARTcar_WheelRight::ARTcar_WheelRight(const std::string& name) : ARTcar_Wheel(nam
 void ARTcar_Wheel::AddVisualizationAssets(VisualizationType vis) {
     if (vis == VisualizationType::MESH) {
         auto trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(GetMeshFile(), false, false);
-        m_trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
-        m_trimesh_shape->SetMesh(trimesh);
-        m_trimesh_shape->SetName(GetMeshName());
-        m_spindle->AddVisualShape(m_trimesh_shape);
-    } else {
-        ChWheel::AddVisualizationAssets(vis);
+        if (trimesh) {
+            m_trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
+            m_trimesh_shape->SetMesh(trimesh);
+            m_trimesh_shape->SetName(GetMeshName());
+            m_spindle->AddVisualShape(m_trimesh_shape);
+            return;
+        }
     }
+
+    // Mesh file could not be loaded: use the default visualization
+    ChWheel::AddVisualizationAssets(vis);
 }
 
 void ARTcar_Wheel::RemoveVisualizationAssets() {

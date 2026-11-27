@@ -65,13 +65,17 @@ void M113_SprocketSinglePin::CreateContactMaterial(ChContactMethod contact_metho
 void M113_SprocketSinglePin::AddVisualizationAssets(VisualizationType vis) {
     if (vis == VisualizationType::MESH) {
         auto trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(GetMeshFile(), false, false);
-        auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
-        trimesh_shape->SetMesh(trimesh);
-        trimesh_shape->SetName(std::filesystem::path(GetMeshFile()).stem().string());
-        m_gear->AddVisualShape(trimesh_shape);
-    } else {
-        ChSprocket::AddVisualizationAssets(vis);
+        if (trimesh) {
+            auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
+            trimesh_shape->SetMesh(trimesh);
+            trimesh_shape->SetName(std::filesystem::path(GetMeshFile()).stem().string());
+            m_gear->AddVisualShape(trimesh_shape);
+            return;
+        }
     }
+
+    // Mesh file could not be loaded: use the default visualization
+    ChSprocket::AddVisualizationAssets(vis);
 }
 
 }  // end namespace m113

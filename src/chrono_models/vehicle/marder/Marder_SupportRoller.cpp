@@ -58,13 +58,17 @@ void Marder_SupportRoller::CreateContactMaterial(ChContactMethod contact_method)
 void Marder_SupportRoller::AddVisualizationAssets(VisualizationType vis) {
     if (vis == VisualizationType::MESH) {
         auto trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(GetMeshFile(), false, false);
-        auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
-        trimesh_shape->SetMesh(trimesh);
-        trimesh_shape->SetName(std::filesystem::path(GetMeshFile()).stem().string());
-        m_wheel->AddVisualShape(trimesh_shape);
-    } else {
-        ChDoubleTrackWheel::AddVisualizationAssets(vis);
+        if (trimesh) {
+            auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
+            trimesh_shape->SetMesh(trimesh);
+            trimesh_shape->SetName(std::filesystem::path(GetMeshFile()).stem().string());
+            m_wheel->AddVisualShape(trimesh_shape);
+            return;
+        }
     }
+
+    // Mesh file could not be loaded: use the default visualization
+    ChDoubleTrackWheel::AddVisualizationAssets(vis);
 }
 
 }  // namespace marder

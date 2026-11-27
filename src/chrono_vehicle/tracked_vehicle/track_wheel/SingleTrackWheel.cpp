@@ -77,13 +77,17 @@ void SingleTrackWheel::CreateContactMaterial(ChContactMethod contact_method) {
 void SingleTrackWheel::AddVisualizationAssets(VisualizationType vis) {
     if (vis == VisualizationType::MESH && m_has_mesh) {
         auto trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(GetVehicleDataFile(m_meshFile), true, true);
-        auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
-        trimesh_shape->SetMesh(trimesh);
-        trimesh_shape->SetName(std::filesystem::path(m_meshFile).stem().string());
-        m_wheel->AddVisualShape(trimesh_shape);
-    } else {
-        ChSingleTrackWheel::AddVisualizationAssets(vis);
+        if (trimesh) {
+            auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
+            trimesh_shape->SetMesh(trimesh);
+            trimesh_shape->SetName(std::filesystem::path(m_meshFile).stem().string());
+            m_wheel->AddVisualShape(trimesh_shape);
+            return;
+        }
     }
+
+    // No mesh requested or mesh file could not be loaded
+    ChSingleTrackWheel::AddVisualizationAssets(vis);
 }
 
 }  // end namespace vehicle

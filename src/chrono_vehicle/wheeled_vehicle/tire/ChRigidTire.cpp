@@ -59,6 +59,8 @@ void ChRigidTire::Initialize(std::shared_ptr<ChWheel> wheel) {
     if (m_use_contact_mesh) {
         // Mesh contact
         m_trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(m_contact_meshFile, true, false);
+        if (!m_trimesh)
+            throw std::invalid_argument("Cannot load tire contact mesh file " + m_contact_meshFile);
 
         //// RADU
         // Hack to deal with current limitation: cannot set offset on a trimesh collision shape!

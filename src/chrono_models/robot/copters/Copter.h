@@ -284,6 +284,8 @@ void Copter<nop>::AddVisualizationAssets(const std::string& chassismesh,
                                          const ChFrame<>& cor_m1,
                                          const ChFrame<>& cor_m2) {
     auto trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(chassismesh, true, true);
+    if (!trimesh)
+        throw std::invalid_argument("Cannot load mesh file " + chassismesh);
     auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
     trimesh_shape->SetMesh(trimesh);
     trimesh_shape->SetColor(ChColor(0.2f, 0.32f, 0.48f));
@@ -291,6 +293,8 @@ void Copter<nop>::AddVisualizationAssets(const std::string& chassismesh,
 
     for (auto propeller : props) {
         auto prop_trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(propellermesh, true, true);
+        if (!prop_trimesh)
+            throw std::invalid_argument("Cannot load mesh file " + propellermesh);
         auto trimesh_prop_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
         trimesh_prop_shape->SetMesh(prop_trimesh);
         trimesh_prop_shape->SetColor(ChColor(0.8f, 0.68f, 0.52f));

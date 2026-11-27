@@ -242,12 +242,15 @@ std::shared_ptr<RigidTerrain::Patch> RigidTerrain::AddPatch(std::shared_ptr<ChCo
                                                             bool connected_mesh,
                                                             double sweep_sphere_radius,
                                                             bool visualization) {
+    // Load mesh from file
+    auto trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(mesh_file, true, true);
+    if (!trimesh)
+        throw std::invalid_argument("Cannot load terrain mesh file " + mesh_file);
+
     auto patch = chrono_types::make_shared<MeshPatch>();
     AddPatch(patch, position, material);
     patch->m_visualize = visualization;
-
-    // Load mesh from file
-    patch->m_trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(mesh_file, true, true);
+    patch->m_trimesh = trimesh;
 
     // Create the collision model
     if (connected_mesh) {

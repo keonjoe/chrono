@@ -34,6 +34,11 @@ ChVisualShapeTriangleMesh::ChVisualShapeTriangleMesh(std::shared_ptr<ChTriangleM
 }
 
 void ChVisualShapeTriangleMesh::SetMesh(std::shared_ptr<ChTriangleMeshConnected> mesh, bool load_materials) {
+    if (!mesh) {
+        std::cerr << "ChVisualShapeTriangleMesh::SetMesh: Invalid (null) mesh; mesh not set" << std::endl;
+        return;
+    }
+
     trimesh = mesh;
 
     // Try to read material information form an MTL file

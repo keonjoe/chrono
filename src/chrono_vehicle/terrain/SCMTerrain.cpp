@@ -619,6 +619,8 @@ bool calcBarycentricCoordinates(const ChVector3d& v1, const ChVector3d& v2, cons
 void SCMLoader::Initialize(const std::string& mesh_file, double delta) {
     // Load triangular mesh
     auto trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(mesh_file, true, true);
+    if (!trimesh)
+        throw std::invalid_argument("Cannot load terrain mesh file " + mesh_file);
 
     Initialize(*trimesh, delta);
 }

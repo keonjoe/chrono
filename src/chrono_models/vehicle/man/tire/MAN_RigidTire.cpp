@@ -58,9 +58,12 @@ void MAN_RigidTire::AddVisualizationAssets(VisualizationType vis) {
     if (vis == VisualizationType::MESH) {
         m_trimesh_shape = AddVisualizationMesh(m_meshFile_left,    // left side
                                                m_meshFile_right);  // right side
-    } else {
-        ChRigidTire::AddVisualizationAssets(vis);
+        if (m_trimesh_shape)
+            return;
     }
+
+    // Mesh file could not be loaded: use the default visualization
+    ChRigidTire::AddVisualizationAssets(vis);
 }
 
 void MAN_RigidTire::RemoveVisualizationAssets() {

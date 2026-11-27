@@ -100,13 +100,17 @@ void M113_TrackShoeBandBushing::AddVisualizationAssets(VisualizationType vis) {
     if (vis == VisualizationType::MESH) {
         auto trimesh =
             ChTriangleMeshConnected::CreateFromWavefrontFile(GetVehicleDataFile(m_meshFile), false, false);
-        auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
-        trimesh_shape->SetMesh(trimesh);
-        trimesh_shape->SetName(std::filesystem::path(m_meshFile).stem().string());
-        m_shoe->AddVisualShape(trimesh_shape);
-    } else {
-        ChTrackShoeBandBushing::AddVisualizationAssets(vis);
+        if (trimesh) {
+            auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
+            trimesh_shape->SetMesh(trimesh);
+            trimesh_shape->SetName(std::filesystem::path(m_meshFile).stem().string());
+            m_shoe->AddVisualShape(trimesh_shape);
+            return;
+        }
     }
+
+    // Mesh file could not be loaded: use the default visualization
+    ChTrackShoeBandBushing::AddVisualizationAssets(vis);
 }
 
 }  // end namespace m113

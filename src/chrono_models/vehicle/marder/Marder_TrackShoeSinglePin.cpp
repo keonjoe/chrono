@@ -129,7 +129,7 @@ Marder_TrackShoeSinglePin::Marder_TrackShoeSinglePin(const std::string& name) : 
     m_geometry.vis_cylinders.push_back(
         utils::ChBodyGeometry::CylinderShape(ChVector3d(-0.061, +0.095, 0), ChVector3d(0, 1, 0), 0.015, 0.095, -1));
 
-    m_geometry.vis_model_file = GetVehicleDataFile("vehicle/M113/TrackShoe.obj");
+    m_geometry.vis_model_file = GetVehicleDataFile("M113/meshes/TrackShoeSinglePin.obj");
 }
 
 }  // namespace marder

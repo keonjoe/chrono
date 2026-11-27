@@ -18,6 +18,7 @@ build_utests(YES "${TESTS}" "vehicle" "${LIBS}" "${UTILS}")
 # Tests that use the vehicle models
 if(CH_ENABLE_MODULE_VEHICLE_MODELS)
   set(MODEL_TESTS
+      utest_VEH_marder_mesh_vis
       utest_VEH_initial_speed
       utest_VEH_simple_driveline
   )

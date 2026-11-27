@@ -109,10 +109,12 @@ ChBodyGeometry::TrimeshShape::TrimeshShape(const ChVector3d& pos,
     : trimesh(trimesh), radius(radius), matID(matID), int_point(interior_point), color({-1, -1, -1}), is_mutable(false) {
     ChMatrix33d R(rot);
 
-    // Transform mesh vertices
-    for (auto& v : trimesh->GetCoordsVertices()) {
-        v *= scale;       // scale
-        v = pos + R * v;  // rotate and translate
+    // Transform mesh vertices (nothing to do if the mesh could not be loaded)
+    if (trimesh) {
+        for (auto& v : trimesh->GetCoordsVertices()) {
+            v *= scale;       // scale
+            v = pos + R * v;  // rotate and translate
+        }
     }
 
     // Transform interior point
@@ -207,6 +209,8 @@ void ChBodyGeometry::CreateVisualizationAssets(std::shared_ptr<ChBody> body, con
         }
 
         for (auto& mesh : coll_meshes) {
+            if (!mesh.trimesh)
+                continue;
             auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
             trimesh_shape->SetMesh(mesh.trimesh);
             trimesh_shape->SetMutable(mesh.is_mutable);
@@ -226,14 +230,17 @@ void ChBodyGeometry::CreateVisualizationAssets(std::shared_ptr<ChBody> body, con
     // Note: using ChVisualShapeModelFile does not work properly with Chrono::VSG (bug in assimp?)
     if (vis == VisualizationType::MESH && !vis_model_file.empty()) {
         auto trimesh = ChTriangleMeshConnected::CreateFromWavefrontFile(vis_model_file, true, true);
-        auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
-        trimesh_shape->SetMesh(trimesh);
-        trimesh_shape->SetName(std::filesystem::path(vis_model_file).stem().string());
-        body->AddVisualShape(trimesh_shape, frame);
-        return;
+        if (trimesh) {
+            auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
+            trimesh_shape->SetMesh(trimesh);
+            trimesh_shape->SetName(std::filesystem::path(vis_model_file).stem().string());
+            body->AddVisualShape(trimesh_shape, frame);
+            return;
+        }
+        // Model file could not be loaded: fall back to primitives
     }
 
-    // If no model file specified, default to primitives
+    // If no model file specified (or it could not be loaded), default to primitives
     for (auto& sphere : vis_spheres) {
         auto sphere_shape = chrono_types::make_shared<ChVisualShapeSphere>(sphere.radius);
         if (create_materials) {
@@ -285,6 +292,8 @@ void ChBodyGeometry::CreateVisualizationAssets(std::shared_ptr<ChBody> body, con
     }
 
     for (auto& mesh : vis_meshes) {
+        if (!mesh.trimesh)
+            continue;
         auto trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
         trimesh_shape->SetMesh(mesh.trimesh);
         trimesh_shape->SetMutable(mesh.is_mutable);
@@ -341,6 +350,8 @@ void ChBodyGeometry::CreateCollisionShapes(std::shared_ptr<ChBody> body, const C
         }
     }
     for (auto& mesh : coll_meshes) {
+        if (!mesh.trimesh)
+            continue;
         assert(cmaterials[mesh.matID]);
         auto shape = chrono_types::make_shared<ChCollisionShapeTriangleMesh>(cmaterials[mesh.matID], mesh.trimesh, false, false, mesh.radius);
         shape->SetMutable(mesh.is_mutable);
@@ -403,6 +414,8 @@ ChAABB ChBodyGeometry::CalculateAABB() {
     }
 
     for (const auto& mesh : coll_meshes) {
+        if (!mesh.trimesh)
+            continue;
         auto bbox = mesh.trimesh->GetBoundingBox();
         amin = Vmin(amin, bbox.min);
         amax = Vmax(amax, bbox.max);
@@ -473,6 +486,8 @@ std::shared_ptr<ChBodyGeometry> ChBodyGeometry::Combine(std::vector<std::pair<Ch
             g->coll_cones.push_back(ConeShape(f * c.pos, f.GetRot() * c.rot, c.radius, c.length, mat[c.matID]));
         }
         for (const auto& m : comp.coll_meshes) {
+            if (!m.trimesh)
+                continue;
             auto trimesh = chrono_types::make_shared<ChTriangleMeshConnected>(*m.trimesh);
             g->coll_meshes.push_back(TrimeshShape(f.GetPos(), f.GetRot(), trimesh, 1.0, 0.01, mat[m.matID]));
         }
@@ -498,6 +513,8 @@ std::shared_ptr<ChBodyGeometry> ChBodyGeometry::Combine(std::vector<std::pair<Ch
             g->vis_cones.push_back(ConeShape(f * c.pos, f.GetRot() * c.rot, c.radius, c.length));
         }
         for (const auto& m : comp.vis_meshes) {
+            if (!m.trimesh)
+                continue;
             auto trimesh = chrono_types::make_shared<ChTriangleMeshConnected>(*m.trimesh);
             g->vis_meshes.push_back(TrimeshShape(f.GetPos(), f.GetRot(), trimesh, 1.0));
         }

@@ -147,11 +147,14 @@ void ChWheel::AddVisualizationAssets(VisualizationType vis) {
         ChQuaternion<> rot = (m_side == VehicleSide::LEFT) ? QuatFromAngleZ(0) : QuatFromAngleZ(CH_PI);
         auto trimesh =
             ChTriangleMeshConnected::CreateFromWavefrontFile(GetVehicleDataFile(m_vis_mesh_file), true, true);
-        m_trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
-        m_trimesh_shape->SetMesh(trimesh);
-        m_trimesh_shape->SetName(std::filesystem::path(m_vis_mesh_file).stem().string());
-        m_spindle->AddVisualShape(m_trimesh_shape, ChFrame<>(ChVector3d(0, m_offset, 0), ChMatrix33<>(rot)));
-        return;
+        if (trimesh) {
+            m_trimesh_shape = chrono_types::make_shared<ChVisualShapeTriangleMesh>();
+            m_trimesh_shape->SetMesh(trimesh);
+            m_trimesh_shape->SetName(std::filesystem::path(m_vis_mesh_file).stem().string());
+            m_spindle->AddVisualShape(m_trimesh_shape, ChFrame<>(ChVector3d(0, m_offset, 0), ChMatrix33<>(rot)));
+            return;
+        }
+        // Mesh file could not be loaded: fall back to a cylinder
     }
 
     if (GetRadius() == 0 || GetWidth() == 0)
