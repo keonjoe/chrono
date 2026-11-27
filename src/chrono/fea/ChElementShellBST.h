@@ -53,6 +53,14 @@ namespace fea {
 ///             \|
 ///              o 5
 /// </pre>
+///
+/// The curvature is recovered from the bending angles at the three edges so that any constant curvature field is
+/// reproduced exactly, on any mesh. Boundary edges (without neighbouring triangle) are free to rotate unless set as
+/// clamped with SetEdgeClamped(). Curvatures are k = (k_11, k_22, k_12), with k_12 = 2 * d2w/dxdy (w the deflection
+/// along the normal), in the element frame with x along the edge from node 0 to node 1.
+/// Note: as for other rotation-free triangles that recover the curvature from a patch of six nodes, structured meshes
+/// with alternating ("union jack") diagonals have soft modes: prefer meshes whose square cells are split along
+/// parallel diagonals, or unstructured meshes.
 class ChApi ChElementShellBST : public ChElementShell, public ChLoadableUV, public ChLoadableUVW {
   public:
     using ShapeVector = ChMatrixNM<double, 1, 3>;
@@ -131,6 +139,17 @@ class ChApi ChElementShellBST : public ChElementShell, public ChLoadableUV, publ
 
     /// Get a handle to the n node from the three of the neighbouring triangles, n=0..2.  Even if nullptr.
     std::shared_ptr<ChNodeFEAxyz> GetNodeNeighbour(unsigned int index) const { return m_nodes[3 + index]; }
+
+    /// Set the boundary condition of a boundary edge, i.e. of an edge without neighbouring triangle.
+    /// Edge n=0..2 is the edge opposite to node n of the triangle (the edge shared with neighbour node 3+n).
+    /// By default, boundary edges are free to rotate (free or simply supported edges, with zero bending
+    /// moment normal to the edge). A clamped edge keeps the slope of the shell across the edge as in the
+    /// reference configuration; the translations of the edge nodes must be constrained separately.
+    /// This setting is ignored for edges that have a neighbouring triangle. Use before the system setup.
+    void SetEdgeClamped(unsigned int edge, bool clamped);
+
+    /// Return true if the boundary edge n=0..2 (the edge opposite to node n) is clamped.
+    bool IsEdgeClamped(unsigned int edge) const { return edge_clamped[edge]; }
 
     /// Sets the neutral rotations of nodes at once,
     /// assuming the current element position is for zero strain.
@@ -218,6 +237,10 @@ class ChApi ChElementShellBST : public ChElementShell, public ChLoadableUV, publ
     ChVector3d cM[3];  ///< cM coefficients
     ChVector3d cI[3];  ///< cI coefficients
     ChVector3d rI;     ///< rI coefficients = RIi/(RMi/RIi) = (1/hIi)/((1/hMi)(1/hIi))
+    ChVector3d kb[3];  ///< curvature per unit change of the edge bendings: k = sum_i kb[i] * (phi[i] - phi0[i])
+    ChVector3d aI;     ///< areas of the neighbouring triangles
+    ChVector3d n0;     ///< normal of the triangle in the reference configuration
+    bool edge_clamped[3];  ///< clamped boundary edges
     ChVector3d phi0;   ///< initial edge bendings
     ChVector3d phi;    ///< actual edge bendings (last computed)
 

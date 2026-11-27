@@ -722,6 +722,9 @@ void ChMeshFileLoader::BSTShellFromObjFile(
     ChMatrix33<> rot_transform                              // optional rotation/scaling of imported mesh
 ) {
     auto mmesh = ChTriangleMeshConnected::CreateFromWavefrontFile(std::string(filename), false, false);
+    if (!mmesh)
+        throw std::invalid_argument("ERROR opening OBJ file: " + std::string(filename) + "\n");
+
     const auto& v_indices = mmesh->m_face_v_indices;
 
     std::map<std::pair<int, int>, std::pair<int, int>> winged_edges;

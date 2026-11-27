@@ -21,6 +21,7 @@ set(TESTS
 	utest_FEA_ANCFhexa_3843_Formulation
     utest_FEA_ANCFhexa_3813_9
     utest_FEA_node_accumulators
+    utest_FEA_shellBST
 )
 
 if(CH_ENABLE_MODULE_FEA_MULTIPHYSICS)

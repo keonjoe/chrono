@@ -25,6 +25,7 @@ namespace fea {
 
 ChElementShellBST::ChElementShellBST() : tot_thickness(0) {
     m_nodes.resize(6);
+    edge_clamped[0] = edge_clamped[1] = edge_clamped[2] = false;
 
     n_usednodes = 6;
 }
@@ -76,6 +77,11 @@ void ChElementShellBST::SetNodes(std::shared_ptr<ChNodeFEAxyz> node0,
     if (node5 != nullptr)
         mvars.push_back(&m_nodes[5]->Variables());
     Kmatr.SetVariables(mvars);
+}
+
+void ChElementShellBST::SetEdgeClamped(unsigned int edge, bool clamped) {
+    assert(edge < 3);
+    edge_clamped[edge] = clamped;
 }
 
 // -----------------------------------------------------------------------------
@@ -239,10 +245,99 @@ void ChElementShellBST::SetupInitial(ChSystem* system) {
         }
     }
     this->k0 *= this->area * 4.0;
+    this->n0 = t0_3;
 
     // Perform layer initialization
     for (size_t kl = 0; kl < m_layers.size(); kl++) {
         m_layers[kl].SetupInitial();
+    }
+
+    // Curvature from the edge bendings.
+    // For a quadratic deflection field over the patch of the triangle and its neighbour (unfolded into the plane of
+    // the triangle), the change of the bending at edge i is a linear function of the curvature, dphi_i = R_i * k.
+    // A clamped edge behaves as if the neighbour were the mirror image of the triangle, deflected symmetrically.
+    // Inverting these relations gives a curvature that is exact for any constant curvature field on any mesh
+    // (averaging the slopes of the two triangles at the edge is exact only if they form a parallelogram).
+    // The bending of a free boundary edge is not known: the curvature is the one of minimum bending energy for
+    // the known edge bendings, so that no bending moment acts normal to a free edge.
+    ChVector2d p[3];
+    for (int iv = 0; iv < 3; ++iv) {
+        ChVector3d d = m_nodes[iv]->GetX0() - m_nodes[0]->GetX0();
+        p[iv] = ChVector2d(Vdot(d, t0_1), Vdot(d, t0_2));
+    }
+    // gradient of the linear interpolation of the values fa, fb, fc at the vertices a, b, c
+    auto gradient = [](const ChVector2d& a, const ChVector2d& b, const ChVector2d& c, double fa, double fb, double fc) {
+        ChVector2d ab = b - a;
+        ChVector2d ac = c - a;
+        double det = ab.x() * ac.y() - ac.x() * ab.y();
+        return ChVector2d(((fb - fa) * ac.y() - (fc - fa) * ab.y()) / det, ((fc - fa) * ab.x() - (fb - fa) * ac.x()) / det);
+    };
+    // quadratic deflection field with curvature k = (k_11, k_22, k_12), k_12 = 2 * d2w/dxdy
+    auto deflection = [](const ChVector2d& x, int j) { return j == 0 ? 0.5 * x.x() * x.x() : (j == 1 ? 0.5 * x.y() * x.y() : 0.5 * x.x() * x.y()); };
+
+    ChMatrixNM<double, 3, 3> R;
+    R.setZero();
+    int active[3];
+    int nactive = 0;
+    for (int i = 0; i < 3; ++i) {
+        kb[i] = VNULL;
+        aI[i] = this->area;
+        bool has_neighbour = (m_nodes[i + 3] != nullptr);
+        if (!has_neighbour && !edge_clamped[i])
+            continue;
+        int ia = (i + 1) % 3;
+        int ib = (i + 2) % 3;
+        ChVector2d e = (p[ib] - p[ia]).GetNormalized();
+        ChVector2d n_out(e.y(), -e.x());  // outward normal of edge i
+        ChVector2d q;                     // opposite vertex of the neighbouring triangle
+        if (has_neighbour) {
+            ChVector3d E = (m_nodes[ib]->GetX0() - m_nodes[ia]->GetX0()).GetNormalized();
+            ChVector3d d = m_nodes[i + 3]->GetX0() - m_nodes[ia]->GetX0();
+            double s = Vdot(d, E);
+            double h = (d - s * E).Length();
+            q = p[ia] + s * e + h * n_out;
+            aI[i] = 0.5 * this->l0[i] * h;
+        } else {
+            ChVector2d d = p[i] - p[ia];
+            q = p[ia] + (d.x() * e.x() + d.y() * e.y()) * e - (d.x() * n_out.x() + d.y() * n_out.y()) * n_out;
+        }
+        for (int j = 0; j < 3; ++j) {
+            ChVector2d gM = gradient(p[0], p[1], p[2], deflection(p[0], j), deflection(p[1], j), deflection(p[2], j));
+            ChVector2d gI = gradient(q, p[ib], p[ia], deflection(q, j), deflection(p[ib], j), deflection(p[ia], j));
+            ChVector2d dg = gI - gM;
+            R(nactive, j) = n_out.x() * dg.x() + n_out.y() * dg.y();
+        }
+        active[nactive++] = i;
+    }
+
+    if (nactive > 0) {
+        // bending stiffness of the section, metric of the minimum energy condition
+        ChMatrixNM<double, 3, 3> Db;
+        Db.setZero();
+        for (size_t kl = 0; kl < m_layers.size(); kl++) {
+            ChMatrixNM<double, 6, 6> C;
+            m_layers[kl].GetMaterial()->GetElasticity()->ComputeStiffnessMatrix(C, VNULL, VNULL, m_layers_z[kl], m_layers_z[kl + 1], m_layers[kl].GetFiberAngle());
+            Db += C.block<3, 3>(3, 3);
+        }
+        Eigen::LLT<Eigen::Matrix3d> Dllt(Db);
+        if (Dllt.info() != Eigen::Success)
+            Db.setIdentity();
+        ChMatrixDynamic<> Rp = R.topRows(nactive);
+        ChMatrixDynamic<> DinvRt = Db.inverse() * Rp.transpose();
+        ChMatrixDynamic<> S = Rp * DinvRt;
+        // The known edge bendings need not be independent: for a boundary triangle whose neighbours have their
+        // opposite vertices on the same straight boundary, two edge bendings measure the same curvature along the
+        // boundary. The pseudo-inverse of S then gives the curvature of minimum bending energy that best fits them.
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> Seig(S);
+        double lambda_min = 1e-8 * Seig.eigenvalues().cwiseAbs().maxCoeff();
+        ChMatrixDynamic<> Spinv(nactive, nactive);
+        Spinv.setZero();
+        for (int c = 0; c < nactive; ++c)
+            if (Seig.eigenvalues()(c) > lambda_min)
+                Spinv += (1.0 / Seig.eigenvalues()(c)) * Seig.eigenvectors().col(c) * Seig.eigenvectors().col(c).transpose();
+        ChMatrixDynamic<> B = DinvRt * Spinv;
+        for (int c = 0; c < nactive; ++c)
+            kb[active[c]] = ChVector3d(B(0, c), B(1, c), B(2, c));
     }
 }
 
@@ -438,31 +533,25 @@ void ChElementShellBST::ComputeInternalForces_impl(ChVectorDynamic<>& Fi,
     this->k = VNULL;
     ChVector3d ti_3[3];
     for (int i = 0; i < 3; ++i) {
+        phi[i] = 0;
+        ti_3[i] = VNULL;
+        // boundary normal to edge i:
+        ChVector3d n_i = Vcross(np[(i + 1) % 3] - np[(i + 2) % 3], t_3).GetNormalized();
         if (m_nodes[i + 3] != nullptr) {
             // normal of ith neighbouring triangle, opposed to ith triangle vertex:
             ti_3[i] = Vcross(np[i + 3] - np[(i + 1) % 3], np[(i + 2) % 3] - np[(i + 1) % 3]).GetNormalized();
-            // boundary normal to shared edge:
-            ChVector3d n_i = Vcross(np[(i + 1) % 3] - np[(i + 2) % 3], t_3).GetNormalized();
             // edge angle
             double mcos_fi = Vdot(t_3, ti_3[i]);
             double msin_fi = Vdot(n_i, ti_3[i]);
-            ChVector3d Dphi;
             phi[i] = std::atan2(msin_fi, mcos_fi);
-            Dphi[i] = phi[i] - this->phi0[i];
-            // curvature
-            double lambda = 1.0;
-            // m_r[i] = 1.0 / 2.0; // to check - to improve in case of coarse mesh, make proportional to triangle
-            // height: r=R_i/(R_i+R_m), R_ = 1/h_
-            ChVector3d LLi(
-                Nx(i) * Nx(i), Ny(i) * Ny(i),
-                -2.0 * Nx(i) * Ny(i));  // TODO: constant LLi[i] if 1 gauss point, linear triangle, move to precomputed?
-            this->k += ((lambda * this->rI[i] * Dphi[i]) / this->l0[i]) * LLi;
-        } else {
-            phi[i] = 0;
-            ti_3[i] = VNULL;
+            this->k += (phi[i] - this->phi0[i]) * this->kb[i];
+        } else if (edge_clamped[i]) {
+            // edge angle respect to the mirror image of the triangle across the clamped edge, i.e. twice the
+            // rotation of the triangle about the edge from its reference orientation
+            phi[i] = 2.0 * std::atan2(Vdot(n_i, this->n0), Vdot(t_3, this->n0));
+            this->k += phi[i] * this->kb[i];
         }
     }
-    this->k *= this->area * 4.0;
 
     // Compute stretching and bending strains
     // Loop on layers:
@@ -510,29 +599,30 @@ void ChElementShellBST::ComputeInternalForces_impl(ChVectorDynamic<>& Fi,
     int i_used_tri = 0;
 
     for (int it = 0; it < 3; ++it) {
-        if (m_nodes[it + 3] != nullptr) {
-            ChVector3d LLi(
-                Nx(it) * Nx(it), Ny(it) * Ny(it),
-                -2.0 * Nx(it) *
-                    Ny(it));  // TODO: constant LLi[i] if 1 gauss point, linear triangle, move to precomputed?
+        bool has_neighbour = (m_nodes[it + 3] != nullptr);
+        if (!has_neighbour && !edge_clamped[it])
+            continue;
 
-            double mtL_coeff = this->area * 1.0  // gauss weight  = 1.0? or 0.5 ?
-                               * 2.0 * this->rI[it] * (1.0 / this->l0[it]) * Vdot(this->m, LLi);
+        // generalized force conjugate to the edge bending, f = area * m * dk/dphi. The rotation of a triangle
+        // about its edge is the out-of-plane displacement of its nodes times the cM (or cI) coefficients / (2 area)
+        double mtL_coeff = this->area * Vdot(this->m, this->kb[it]);
 
-            int iI[3] = {
-                (i_used_tri + 3), (it + 2) % 3,
-                (it + 1) %
-                    3};  // state indexes of used vertices in neighbouring triangle it, opposed to vertex iv=it; ccwise
+        if (has_neighbour) {
+            int iI[3] = {(i_used_tri + 3), (it + 2) % 3, (it + 1) % 3};  // state indexes of used vertices in neighbouring triangle it, opposed to
+                                                                         // vertex iv=it; ccwise
 
             for (int iv = 0; iv < 3; ++iv) {
-                Fi.segment(iv * 3, 3) += -mtL_coeff *  // * lambda_M/lambda_M  (=1)
-                                         this->cM[it][iv] * (t_3).eigen();
+                Fi.segment(iv * 3, 3) += -mtL_coeff / (2.0 * this->area) * this->cM[it][iv] * (t_3).eigen();
 
-                Fi.segment(iI[iv] * 3, 3) += -mtL_coeff *  // * lambda_M/lambda_I  (approx=1)
-                                             this->cI[it][iv] * (ti_3[it]).eigen();
+                Fi.segment(iI[iv] * 3, 3) += -mtL_coeff / (2.0 * this->aI[it]) * this->cI[it][iv] * (ti_3[it]).eigen();
             }
 
             ++i_used_tri;
+        } else {
+            // clamped edge: the edge bending is twice the rotation of the triangle
+            for (int iv = 0; iv < 3; ++iv) {
+                Fi.segment(iv * 3, 3) += -mtL_coeff / this->area * this->cM[it][iv] * (t_3).eigen();
+            }
         }
     }
 }
