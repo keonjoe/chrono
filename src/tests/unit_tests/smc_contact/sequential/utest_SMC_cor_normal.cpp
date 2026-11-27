@@ -92,10 +92,12 @@ TEST_P(CorNormalTest, impact) {
     double rel_vm_out = (body2->GetPosDt() - body1->GetPosDt()).Length();
     double cor_out = rel_vm_out / rel_vm_in;
     double cor_in = std::get<1>(GetParam());
+    // The default force models limit the coefficient of restitution to 0.01 (a smaller one requires unbounded damping)
+    double cor_ref = std::max(cor_in, 0.01);
     std::cout << ForceModel_name(std::get<0>(GetParam())) << "  "  //
               << cor_in << "  " << cor_out << "  "                 //
-              << std::abs(cor_out - cor_in) << "\n";
-    ASSERT_NEAR(cor_out, cor_in, 1e-3);
+              << std::abs(cor_out - cor_ref) << "\n";
+    ASSERT_NEAR(cor_out, cor_ref, 1e-3);
 }
 
 INSTANTIATE_TEST_SUITE_P(ChronoSequential,

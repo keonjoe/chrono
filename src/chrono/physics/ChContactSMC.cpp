@@ -22,6 +22,50 @@
 
 namespace chrono {
 
+// Damping ratio zeta of a linear spring-dashpot contact, m * x'' + c * x' + k * x = 0 with c = 2 * zeta * sqrt(m * k),
+// that results in the coefficient of restitution cr when the contact force k * x + c * x' is not allowed to become
+// attractive, so that the objects separate as soon as this force vanishes (Schwager and Poschel, 2007):
+//     -ln(cr) = 2 * theta * cot(theta),  zeta = cos(theta),   for cr >= exp(-2),
+//     -ln(cr) = 2 * tau * coth(tau),     zeta = cosh(tau),    for cr <  exp(-2).
+// The relation ln(cr) = -pi * zeta / sqrt(1 - zeta^2), valid if the force may become attractive, underestimates the
+// damping and yields a larger restitution coefficient (e.g., 0.32 instead of 0.2), and no value below exp(-2).
+// The Hertzian contact with the damping coefficient 2 * sqrt(5/6) * zeta * sqrt(Sn * m) maps exactly onto the same
+// linear oscillator (with u = delta^(5/4) and the time scaled by delta^(1/4)), so the same relation applies to it.
+// The equation G(q) = -ln(cr), with G(q) = 2 * sqrt(q) * cot(sqrt(q)) and q = theta^2 = -tau^2, is solved with Newton
+// iterations. G is concave and decreasing, and the starting value obtained from the relation without clamping,
+// -ln(cr) = pi * cot(theta), is not smaller than the solution, so the iteration converges monotonically.
+static double ContactDampingRatio(double cr) {
+    if (cr >= 1)
+        return 0;
+    // Vanishing restitution coefficients require unbounded damping (zeta ~ 1 / (2 * sqrt(cr))), so limit cr as in the
+    // Flores model. Note that a strongly overdamped contact approaches its static equilibrium slowly.
+    double L = -std::log(std::max(cr, 0.01));
+    double q = std::atan(CH_PI / L);
+    q *= q;
+    for (int i = 0; i < 50; i++) {
+        double G, dG;
+        if (q > 1e-6) {
+            double x = std::sqrt(q);
+            double cot = 1 / std::tan(x);
+            G = 2 * x * cot;
+            dG = (cot - x * (1 + cot * cot)) / x;
+        } else if (q < -1e-6) {
+            double x = std::sqrt(-q);
+            double coth = 1 / std::tanh(x);
+            G = 2 * x * coth;
+            dG = -(coth - x * (coth * coth - 1)) / x;
+        } else {
+            G = 2 - 2 * q / 3;
+            dG = -2.0 / 3 - 4 * q / 45;
+        }
+        double dq = (G - L) / dG;
+        q -= dq;
+        if (std::abs(dq) < 1e-12 * (1 + std::abs(q)))
+            break;
+    }
+    return q >= 0 ? std::cos(std::sqrt(q)) : std::cosh(std::sqrt(-q));
+}
+
 ChWrenchd ChDefaultContactForceTorqueSMC::CalculateForceTorque(
     const ChSystemSMC& sys,                    ///< containing system
     const ChVector3d& normal_dir,              ///< normal contact direction (expressed in global frame)
@@ -56,8 +100,12 @@ ChWrenchd ChDefaultContactForceTorqueSMC::CalculateForceTorque(
     ChVector3d relvel_t = relvel - relvel_n;
     double relvel_t_mag = relvel_t.Length();
 
-    // Calculate effective mass
+    // Calculate effective mass (an object that does not move, such as a fixed body, acts as one of infinite mass)
     double eff_mass = mass1 * mass2 / (mass1 + mass2);
+    if (objA && !objA->IsContactActive())
+        eff_mass = mass2;
+    else if (objB && !objB->IsContactActive())
+        eff_mass = mass1;
 
     // Calculate stiffness and viscous damping coefficients.
     // All models use the following formulas for normal and tangential forces:
@@ -107,8 +155,8 @@ ChWrenchd ChDefaultContactForceTorqueSMC::CalculateForceTorque(
                 double tmp_g = 1 + std::pow(CH_PI / loge, 2);
                 kn = tmp_k * std::pow(eff_mass * v2 / tmp_k, 1.0 / 5);
                 kt = kn;
-                gn = std::sqrt(4 * eff_mass * kn / tmp_g);
-                gt = gn;
+                gn = 2 * ContactDampingRatio(mat.cr_eff) * std::sqrt(eff_mass * kn);
+                gt = std::sqrt(4 * eff_mass * kn / tmp_g);
             } else {
                 kn = mat.kn;
                 kt = mat.kt;
@@ -127,7 +175,7 @@ ChWrenchd ChDefaultContactForceTorqueSMC::CalculateForceTorque(
                 double beta = loge / std::sqrt(loge * loge + CH_PI * CH_PI);
                 kn = CH_2_3 * Sn;
                 kt = St;
-                gn = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(Sn * eff_mass);
+                gn = 2 * std::sqrt(5.0 / 6) * ContactDampingRatio(mat.cr_eff) * std::sqrt(Sn * eff_mass);
                 gt = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(St * eff_mass);
             } else {
                 double tmp = eff_radius * std::sqrt(delta);
@@ -143,10 +191,8 @@ ChWrenchd ChDefaultContactForceTorqueSMC::CalculateForceTorque(
             if (use_mat_props) {
                 double sqrt_Rd = std::sqrt(delta);
                 double Sn = 2 * mat.E_eff * sqrt_Rd;
-                double loge = (mat.cr_eff < eps) ? std::log(eps) : std::log(mat.cr_eff);
-                double beta = loge / std::sqrt(loge * loge + CH_PI * CH_PI);
                 kn = CH_2_3 * Sn;
-                gn = -2 * std::sqrt(5.0 / 6) * beta * std::sqrt(Sn * eff_mass);
+                gn = 2 * std::sqrt(5.0 / 6) * ContactDampingRatio(mat.cr_eff) * std::sqrt(Sn * eff_mass);
             } else {
                 double tmp = std::sqrt(delta);
                 kn = tmp * mat.kn;
@@ -157,6 +203,9 @@ ChWrenchd ChDefaultContactForceTorqueSMC::CalculateForceTorque(
             gt = 0;
 
             {
+                // Limit the damping for the stability of its explicit integration (see below)
+                if (!sys.IsContactStiff())
+                    gn = std::min(gn, eff_mass / (4 * dT));
                 double forceN = kn * delta - gn * relvel_n_mag;
                 if (forceN < 0)
                     forceN = 0;
@@ -194,6 +243,14 @@ ChWrenchd ChDefaultContactForceTorqueSMC::CalculateForceTorque(
         default:
             break;
     }
+
+    // Limit the normal damping for the stability of its explicit integration, which requires gn * dT < 2 * m_c for a
+    // single contact, with m_c the effective mass at the contact point. This mass can be as small as eff_mass / 4 (e.g.,
+    // at the corner of a box), and several contacts can act on the same body. The limit matters for the strong damping
+    // required by small restitution coefficients when the contact is not resolved by the time step. With stiff contact,
+    // the damping enters the implicit integration through the contact Jacobians and needs no limit.
+    if (!sys.IsContactStiff())
+        gn = std::min(gn, eff_mass / (4 * dT));
 
     // Calculate the magnitudes of the normal and tangential contact forces
     double forceN = kn * delta - gn * relvel_n_mag;
@@ -342,7 +399,6 @@ void ChContactSMC::CalculateQ(const ChState& stateA_x,                   // stat
 }
 
 void ChContactSMC::CreateJacobians() {
-    /*
     delete m_Jac;
     m_Jac = new ChContactJacobian;
 
@@ -356,11 +412,9 @@ void ChContactSMC::CreateJacobians() {
     m_Jac->m_K.setZero(ndof_w, ndof_w);
     m_Jac->m_R.setZero(ndof_w, ndof_w);
     assert(m_Jac->m_KRM.GetMatrix().cols() == ndof_w);
-    */
 }
 
 void ChContactSMC::CalculateJacobians(const ChContactMaterialCompositeSMC& mat) {
-    /*
     // Compute a finite-difference approximations to the Jacobians of the contact forces and
     // load dQ/dx into m_Jac->m_K and dQ/dw into m_Jac->m_R.
     // Note that we only calculate these Jacobians whenever the contact force itself is calculated,
@@ -430,7 +484,6 @@ void ChContactSMC::CalculateJacobians(const ChContactMaterialCompositeSMC& mat) 
 
         m_Jac->m_R.col(ndofA_w + i) = (Q1 - Q0) * (-1 / perturbation);  // note sign change
     }
-    */
 }
 
 void ChContactSMC::ContIntLoadResidual_F(ChVectorDynamic<>& R, const double c) {
@@ -450,14 +503,12 @@ void ChContactSMC::ContInjectKRMmatrices(ChSystemDescriptor& mdescriptor) {
 }
 
 void ChContactSMC::ContKRMmatricesLoad(double Kfactor, double Rfactor) {
-    /*
     if (m_Jac) {
         m_Jac->m_KRM.GetMatrix().setZero();
 
         m_Jac->m_KRM.GetMatrix() += m_Jac->m_K * Kfactor;
         m_Jac->m_KRM.GetMatrix() += m_Jac->m_R * Rfactor;
     }
-    */
 }
 
 }  // end namespace chrono

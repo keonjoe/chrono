@@ -67,6 +67,7 @@ void function_CalcContactForces(int index,                                      
                                 real min_spin_vel,                                    // threshold spinning velocity
                                 real dT,                                              // integration time step
                                 real* body_mass,                                      // body masses (per body)
+                                char* body_active,                                    // body activity flags (per body)
                                 real3* pos,                                           // body positions
                                 quaternion* rot,                                      // body orientations
                                 real* vel,                                            // body linear and angular velocities
@@ -136,7 +137,12 @@ void function_CalcContactForces(int index,                                      
     // Extract composite material properties
     // -------------------------------------
 
+    // A body that does not move (e.g., a fixed body) acts as one of infinite mass
     real m_eff = body_mass[b1] * body_mass[b2] / (body_mass[b1] + body_mass[b2]);
+    if (!body_active[b1])
+        m_eff = body_mass[b2];
+    else if (!body_active[b2])
+        m_eff = body_mass[b1];
 
     real mu_eff = friction[index].x;
     real muRoll_eff = friction[index].y;
@@ -581,6 +587,7 @@ void ChIterativeSolverMulticoreSMC::host_CalcContactForces(custom_vector<int>& c
                                    data_manager->settings.solver.min_spin_vel,             // threshold spinning velocity
                                    data_manager->settings.step_size,                       // integration time step
                                    data_manager->host_data.mass_rigid.data(),              // body masses
+                                   data_manager->host_data.active_rigid.data(),            // body activity flags
                                    data_manager->host_data.pos_rigid.data(),               // body positions
                                    data_manager->host_data.rot_rigid.data(),               // body orientations
                                    data_manager->host_data.v.data(),                       // body linear and angular velocities

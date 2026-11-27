@@ -15,6 +15,8 @@ SET(TESTS
     utest_CH_checkpoint
     utest_CH_spring_jacobians
     utest_CH_nsc_restitution
+    utest_CH_smc_restitution
+    utest_CH_smc_stiff_contact
     utest_CH_pulley
     utest_CH_euler_linearized_damping
     utest_CH_gyroscopic_torque
