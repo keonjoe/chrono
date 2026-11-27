@@ -179,6 +179,10 @@ jobs:
           # Chrono::Multicore (OpenMP + Thrust); required by OpenMultiPhysics
           OPT+=(-DCH_ENABLE_MODULE_MULTICORE=ON -DCH_ENABLE_OPENMP=ON -DThrust_ROOT="$THRUST_DIR" -DTHRUST_INCLUDE_DIR="$THRUST_DIR")
 
+          # Bullet collision in double precision: the single-precision GJK narrowphase loses accuracy for elongated or
+          # metre-sized curved shapes; required by OpenMultiPhysics
+          OPT+=(-DCH_USE_BULLET_DOUBLE=ON)
+
           cmake -S . -B build "${OPT[@]}" \
             -DCMAKE_BUILD_TYPE=Release \
             -DCH_SIMD_NATIVE=OFF \
@@ -210,6 +214,12 @@ jobs:
             grep -Eqi 'Chrono_PARDISOMKL_AVAILABLE[[:space:]]+(ON|TRUE|1)\b' "$CFG" \
               || { echo "::error::Chrono::PardisoMKL missing from the installed package"; exit 1; }
           fi
+          # every package must be built with double-precision Bullet collision; the option is not recorded in the
+          # installed files, so a marker file tells the consumer (OpenMultiPhysics checks it after the download)
+          grep -q '^CH_USE_BULLET_DOUBLE:BOOL=ON' build/CMakeCache.txt \
+            || { echo "::error::Chrono was configured without CH_USE_BULLET_DOUBLE=ON"; exit 1; }
+          mkdir -p install/share/chrono
+          echo "CH_USE_BULLET_DOUBLE=ON" > install/share/chrono/build_options.txt
 
       # ---- Package preparation & archiving ----------------------------------------------------
       - name: Prepare and archive package
