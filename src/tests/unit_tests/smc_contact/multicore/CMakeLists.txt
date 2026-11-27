@@ -2,6 +2,7 @@ set(TESTS
     utest_SMCm_cohesion
     utest_SMCm_cor_normal
     utest_SMCm_cor_wall
+    utest_SMCm_ellipsoid_radius
     utest_SMCm_rolling_gravity
     utest_SMCm_sliding_gravity
     utest_SMCm_spinning_gravity

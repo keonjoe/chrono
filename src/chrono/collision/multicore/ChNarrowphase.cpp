@@ -14,6 +14,8 @@
 
 #include <algorithm>
 #include <climits>
+#include <cmath>
+#include <limits>
 
 #include "chrono/multicore_math/thrust.h"
 
@@ -232,6 +234,54 @@ void ChNarrowphase::Dispatch_Finalize(uint icoll, uint ID_A, uint ID_B, int nC) 
     }
 }
 
+// Radius of curvature of a convex shape at a contact point with the given contact normal (expressed in the absolute
+// frame; its sense is irrelevant). Same conventions as the PRIMS narrowphase: infinity on a flat face, the default
+// effective radius as edge radius on an edge or vertex, and 0 if unknown (e.g., for cones, convex hulls and triangles).
+// For an ellipsoid with semi-axes a, b, c this is the radius 1 / sqrt(K) = a * b * c / (a^2 nx^2 + b^2 ny^2 + c^2 nz^2)
+// of the Gaussian curvature K at the point with normal n.
+static real CurvatureRadius(const ConvexBase* shape, const real3& normal) {
+    const real tol = real(1e-4);  // tolerance on the normal direction for flat faces and lateral surfaces
+    const real inf = std::numeric_limits<real>::infinity();
+    real edge_radius = (real)ChCollisionInfo::GetDefaultEffectiveCurvatureRadius();
+    real3 n = Abs(RotateT(normal, shape->R()));
+    bool face = Max(n) > 1 - tol;
+
+    switch (shape->Type()) {
+        case ChCollisionShape::Type::SPHERE:
+            return shape->Radius();
+        case ChCollisionShape::Type::CAPSULE:
+            return shape->Capsule().x;
+        case ChCollisionShape::Type::ELLIPSOID: {
+            real3 a = shape->Box();
+            return a.x * a.y * a.z / Dot(a * n, a * n);
+        }
+        case ChCollisionShape::Type::BOX:
+            return face ? inf : edge_radius;
+        case ChCollisionShape::Type::ROUNDEDBOX:
+            return face ? inf : shape->Rbox().w;
+        case ChCollisionShape::Type::CYLINDER:
+            if (n.z > 1 - tol)
+                return inf;
+            return n.z < tol ? shape->Box().x : edge_radius;
+        case ChCollisionShape::Type::ROUNDEDCYL:
+            if (n.z > 1 - tol)
+                return inf;
+            return n.z < tol ? shape->Rbox().x : shape->Rbox().w;
+        default:
+            return 0;
+    }
+}
+
+// Effective radius of curvature of a contact between two convex shapes, 1 / R = 1 / R_A + 1 / R_B. The default
+// effective radius is used if the curvature of one of the shapes is unknown or if both shapes are flat.
+static real EffectiveRadius(const ConvexBase* shapeA, const ConvexBase* shapeB, const real3& normal) {
+    real radA = CurvatureRadius(shapeA, normal);
+    real radB = CurvatureRadius(shapeB, normal);
+    if (radA > 0 && radB > 0 && (std::isfinite(radA) || std::isfinite(radB)))
+        return 1 / (1 / radA + 1 / radB);
+    return (real)ChCollisionInfo::GetDefaultEffectiveCurvatureRadius();
+}
+
 void ChNarrowphase::DispatchMPR() {
     const real envelope = cd_data->collision_envelope;
     std::vector<real3>& norm = cd_data->norm_rigid_rigid;
@@ -243,8 +293,6 @@ void ChNarrowphase::DispatchMPR() {
     ConvexShape shapeA;
     ConvexShape shapeB;
 
-    double default_eff_radius = ChCollisionInfo::GetDefaultEffectiveCurvatureRadius();
-
 #pragma omp parallel for private(shapeA, shapeB)
     for (int index = 0; index < (signed)num_potential_rigid_contacts; index++) {
         uint ID_A, ID_B, icoll;
@@ -252,7 +300,7 @@ void ChNarrowphase::DispatchMPR() {
         Dispatch_Init(index, icoll, ID_A, ID_B, &shapeA, &shapeB);
 
         if (MPRCollision(&shapeA, &shapeB, envelope, norm[icoll], ptA[icoll], ptB[icoll], contactDepth[icoll])) {
-            effective_radius[icoll] = default_eff_radius;
+            effective_radius[icoll] = EffectiveRadius(&shapeA, &shapeB, norm[icoll]);
             // The number of contacts reported by MPR is always 1.
             Dispatch_Finalize(icoll, ID_A, ID_B, 1);
         }
@@ -296,8 +344,6 @@ void ChNarrowphase::DispatchHybridMPR() {
     ConvexShape shapeA;
     ConvexShape shapeB;
 
-    double default_eff_radius = ChCollisionInfo::GetDefaultEffectiveCurvatureRadius();
-
 #pragma omp parallel for private(shapeA, shapeB)
     for (int index = 0; index < (signed)num_potential_rigid_contacts; index++) {
         uint ID_A, ID_B, icoll;
@@ -310,7 +356,7 @@ void ChNarrowphase::DispatchHybridMPR() {
                            &effective_radius[icoll], nC)) {
             Dispatch_Finalize(icoll, ID_A, ID_B, nC);
         } else if (MPRCollision(&shapeA, &shapeB, envelope, norm[icoll], ptA[icoll], ptB[icoll], contactDepth[icoll])) {
-            effective_radius[icoll] = default_eff_radius;
+            effective_radius[icoll] = EffectiveRadius(&shapeA, &shapeB, norm[icoll]);
             Dispatch_Finalize(icoll, ID_A, ID_B, 1);
         }
         // delete shapeA;

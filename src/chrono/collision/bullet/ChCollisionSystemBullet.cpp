@@ -13,6 +13,8 @@
 // =============================================================================
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 #include "chrono/physics/ChContactContainer.h"
 #include "chrono/physics/ChProximityContainer.h"
@@ -211,12 +213,64 @@ double ChCollisionSystemBullet::GetTimerCollisionNarrow() const {
     return bt_collision_world->timer_collision_narrow();
 }
 
+// Radius of curvature of a collision shape at a contact point, from the outward contact normal n expressed in the shape
+// frame, with the conventions of the Chrono::Multicore narrowphase: infinity on a flat face, the default effective radius
+// as edge radius on an edge or vertex, and 0 if unknown (e.g., for convex hulls and meshes). For an ellipsoid with
+// semi-axes a, b, c this is the radius 1 / sqrt(K) = a * b * c / (a^2 nx^2 + b^2 ny^2 + c^2 nz^2) of the Gaussian
+// curvature K at the point with normal n.
+static double CurvatureRadius(const ChCollisionShape* shape, const ChVector3d& n) {
+    const double tol = 1e-4;  // tolerance on the normal direction for flat faces and lateral surfaces
+    const double inf = std::numeric_limits<double>::infinity();
+    double edge_radius = ChCollisionInfo::GetDefaultEffectiveCurvatureRadius();
+    bool face = std::max({std::abs(n.x()), std::abs(n.y()), std::abs(n.z())}) > 1 - tol;
+
+    switch (shape->GetType()) {
+        case ChCollisionShape::Type::SPHERE:
+            return static_cast<const ChCollisionShapeSphere*>(shape)->GetRadius();
+        case ChCollisionShape::Type::CAPSULE:
+            return static_cast<const ChCollisionShapeCapsule*>(shape)->GetRadius();
+        case ChCollisionShape::Type::ELLIPSOID: {
+            const auto& a = static_cast<const ChCollisionShapeEllipsoid*>(shape)->GetSemiaxes();
+            return a.x() * a.y() * a.z() / (a.x() * a.x() * n.x() * n.x() + a.y() * a.y() * n.y() * n.y() + a.z() * a.z() * n.z() * n.z());
+        }
+        case ChCollisionShape::Type::BOX:
+            return face ? inf : edge_radius;
+        case ChCollisionShape::Type::ROUNDEDBOX:
+            return face ? inf : static_cast<const ChCollisionShapeRoundedBox*>(shape)->GetSweepRadius();
+        case ChCollisionShape::Type::CYLINDER:
+            if (std::abs(n.z()) > 1 - tol)
+                return inf;
+            return std::abs(n.z()) < tol ? static_cast<const ChCollisionShapeCylinder*>(shape)->GetRadius() : edge_radius;
+        case ChCollisionShape::Type::ROUNDEDCYL: {
+            auto cyl = static_cast<const ChCollisionShapeRoundedCylinder*>(shape);
+            if (std::abs(n.z()) > 1 - tol)
+                return inf;
+            return std::abs(n.z()) < tol ? cyl->GetRadius() : cyl->GetSweepRadius();
+        }
+        default:
+            return 0;
+    }
+}
+
+// Contact normal n (expressed in the absolute frame) expressed in the frame of a (possibly compound) collision shape.
+static ChVector3d ShapeNormal(const cbtCollisionObject* obj, bool compound, int index, const ChVector3d& n) {
+    cbtMatrix3x3 R = obj->getWorldTransform().getBasis();
+    if (compound) {
+        auto compound_shape = static_cast<const cbtCompoundShape*>(obj->getCollisionShape());
+        if (index < compound_shape->getNumChildShapes())
+            R = R * compound_shape->getChildTransform(index).getBasis();
+    }
+    cbtVector3 n_loc = R.transpose() * cbtVector3((cbtScalar)n.x(), (cbtScalar)n.y(), (cbtScalar)n.z());
+    return ChVector3d(n_loc.x(), n_loc.y(), n_loc.z());
+}
+
 void ChCollisionSystemBullet::ReportContacts(ChContactContainer* contact_container) {
     // This should remove all old contacts (or at least rewind the index)
     contact_container->BeginAddContact();
 
-    // NOTE: Bullet does not provide information on radius of curvature at a contact point.
-    // As such, for all Bullet-identified contacts, the default value will be used (SMC only).
+    // Bullet does not provide the radius of curvature at a contact point. It is obtained from the geometry of the
+    // shapes in contact where it is defined (spheres, capsules, ellipsoids, cylinders, faces and edges of boxes),
+    // otherwise the default value is used (SMC only).
     ChCollisionInfo cinfo;
 
     int numManifolds = bt_collision_world->getDispatcher()->getNumManifolds();
@@ -276,6 +330,14 @@ void ChCollisionSystemBullet::ReportContacts(ChContactContainer* contact_contain
 
                     cinfo.shapeA = bt_modelA->m_shapes[indexA]->ch_shape.get();
                     cinfo.shapeB = bt_modelB->m_shapes[indexB]->ch_shape.get();
+
+                    // Effective radius of curvature, 1 / R = 1 / R_A + 1 / R_B
+                    double radA = CurvatureRadius(cinfo.shapeA, ShapeNormal(objA, compoundA, indexA, cinfo.vN));
+                    double radB = CurvatureRadius(cinfo.shapeB, ShapeNormal(objB, compoundB, indexB, -cinfo.vN));
+                    if (radA > 0 && radB > 0 && (std::isfinite(radA) || std::isfinite(radB)))
+                        cinfo.eff_radius = 1 / (1 / radA + 1 / radB);
+                    else
+                        cinfo.eff_radius = ChCollisionInfo::GetDefaultEffectiveCurvatureRadius();
 
                     // Execute some user custom callback, if any
                     bool add_contact = true;
