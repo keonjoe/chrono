@@ -326,19 +326,22 @@ jobs:
             gh release upload "$COMMIT_TAG" dist/* --clobber
           fi
 
-          # Update rolling release for primary branches (develop, main, master)
+          # Update rolling release for primary branches (develop, main, master).
+          # Its tag is prefixed so that it does not share a name with the branch, which would make the
+          # branch name ambiguous in git commands.
           if [ "$REF_NAME" = "develop" ] || [ "$REF_NAME" = "main" ] || [ "$REF_NAME" = "master" ]; then
+            ROLLING_TAG="rolling-$REF_NAME"
             BRANCH_NOTES="Rolling prebuilt packages for branch $REF_NAME (commit $SHA) for consumption by OpenMultiPhysics."
-            echo "== Updating branch rolling release for: $REF_NAME"
-            if ! gh release view "$REF_NAME" >/dev/null 2>&1; then
-              gh release create "$REF_NAME" \
+            echo "== Updating branch rolling release: $ROLLING_TAG"
+            if ! gh release view "$ROLLING_TAG" >/dev/null 2>&1; then
+              gh release create "$ROLLING_TAG" \
                 --target "$SHA" \
                 --title "Project Chrono ($REF_NAME)" \
                 --notes "$BRANCH_NOTES" \
                 dist/*
             else
-              gh release edit "$REF_NAME" --target "$SHA" --notes "$BRANCH_NOTES" >/dev/null 2>&1 || true
-              gh release upload "$REF_NAME" dist/* --clobber
+              gh release edit "$ROLLING_TAG" --target "$SHA" --notes "$BRANCH_NOTES" >/dev/null 2>&1 || true
+              gh release upload "$ROLLING_TAG" dist/* --clobber
             fi
 
             LATEST_NOTES="Rolling latest release packages of Project Chrono built for automated consumption by OpenMultiPhysics (Linux x86_64, Windows x86_64, macOS Apple Silicon arm64; with Chrono::Multicore). Built from commit $SHA on branch $REF_NAME."
