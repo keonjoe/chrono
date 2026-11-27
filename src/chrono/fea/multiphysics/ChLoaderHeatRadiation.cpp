@@ -31,14 +31,16 @@ void ChLoaderHeatRadiation::ComputeF(double U, double V, ChVectorDynamic<>& F, C
             face->ComputeN(ChVector3d(U, V, 0), N);
             // Interpolate T as  T = [T1,T2,T3,...] * N^T
             ChRowVectorDynamic<> T_hat(face->GetNumNodes());
+            // Use the temperatures in state_w if provided (as when computing the Jacobian), the nodal ones otherwise.
             for (unsigned int in = 0; in < face->GetNumNodes(); ++in) {
-                T_hat(in) = m_temp->NodeData(face->GetNode(in)).T();
+                T_hat(in) = state_w ? (*state_w)(in) : m_temp->NodeData(face->GetNode(in)).T();
             }
             double T = T_hat * N.transpose();
 
-            // Compute the heat flux using the Boltzmann law:
+            // Compute the net heat flux exchanged with the environment using the Stefan-Boltzmann law (grey surface in
+            // a large enclosure, absolute temperatures): W_per_area = e * sigma * (T^4 - T_env^4), outgoing if T > T_env
             double sigma = 5.670374419e-8; // Stefan-Boltzmann constant
-            F(0) = -this->m_emissivity * sigma * std::pow((T - m_T_env), 4);
+            F(0) = -this->m_emissivity * sigma * (std::pow(T, 4) - std::pow(m_T_env, 4));
         }
     } 
 }

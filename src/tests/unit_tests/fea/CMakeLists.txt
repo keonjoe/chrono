@@ -28,6 +28,7 @@ set(TESTS
 if(CH_ENABLE_MODULE_FEA_MULTIPHYSICS)
   set(TESTS ${TESTS}
     utest_FEA_domain_deformation
+    utest_FEA_thermal_convection
   )
 endif()
 

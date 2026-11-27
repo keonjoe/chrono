@@ -30,8 +30,9 @@ void ChLoaderHeatConvection::ComputeF(double U, double V, ChVectorDynamic<>& F, 
             face->ComputeN(ChVector3d(U, V, 0), N);
             // Interpolate T as  T = [T1,T2,T3,...] * N^T
             ChRowVectorDynamic<> T_hat(face->GetNumNodes());
+            // Use the temperatures in state_w if provided (as when computing the Jacobian), the nodal ones otherwise.
             for (unsigned int in = 0; in < face->GetNumNodes(); ++in) {
-                T_hat(in) = m_temp->NodeData(face->GetNode(in)).T();
+                T_hat(in) = state_w ? (*state_w)(in) : m_temp->NodeData(face->GetNode(in)).T();
             }
             double T = T_hat * N.transpose();
 

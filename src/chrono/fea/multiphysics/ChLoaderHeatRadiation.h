@@ -30,9 +30,10 @@ namespace fea {
 
 /// Thermal load: radiation from surface.
 /// Use this for applying a heat flux on the surface of finite elements, 
-/// according to the Boltzmann law. If temperature is high enough, this can cause
-/// outgoing heat flux as radiating in outer space. Using this, one can simulate
-/// the black body radiation, etc. Negligible for low temperatures.
+/// according to the Stefan-Boltzmann law for a grey surface in a large enclosure at the
+/// environment temperature: W_per_area = e * sigma * (T^4 - T_env^4), with absolute
+/// temperatures. The flux is outgoing if the surface is hotter than the environment,
+/// ingoing otherwise. Using this, one can simulate the black body radiation, etc.
 /// Beware of the high nonlinearity because of the 4th power in the temperature.
 
 class ChApi ChLoaderHeatRadiation : public ChLoaderUVdistributed {
@@ -47,20 +48,25 @@ public:
         ChVectorDynamic<>* state_w   ///< if != 0, update state (speed part) to this, then evaluate F
     ) override;
 
-    /// Set the emissivity e in  W = e * sigma * T^4  Boltzmann law. 
+    /// Set the emissivity e in  W = e * sigma * (T^4 - T_env^4)  Stefan-Boltzmann law.
     /// Typically a value in  0...1 range, with 1 as black body
     void SetSurfaceEmissivity(double emissivity) { m_emissivity = emissivity; }
 
-    /// Get the emissivity e in  W = e * sigma * T^4  Boltzmann law 
+    /// Get the emissivity e in  W = e * sigma * (T^4 - T_env^4)  Stefan-Boltzmann law.
     double GetSurfaceEmissivity() { return m_emissivity; }
 
     /// Set the imposed environment temperature at the external of the 
-    /// surface (the smaller the delta with the FE temperature, the less radiation). 
+    /// surface, in absolute units (the smaller the delta with the FE temperature, the less radiation).
     void SetEnvironmentTemperature(double T_env) { m_T_env = T_env; }
 
     /// Get the imposed environment temperature at the external of the 
-    /// surface (the smaller the delta with the FE temperature, the less radiation). 
+    /// surface, in absolute units (the smaller the delta with the FE temperature, the less radiation).
     double GetEnvironmentTemperature() { return m_T_env; }
+
+    /// The heat flux depends on the surface temperature: the load provides its Jacobian with respect to the nodal
+    /// temperatures (stored at the velocity level of the temperature field), so that implicit integrators can
+    /// treat the radiation implicitly.
+    virtual bool IsStiff() override { return true; }
 
     void SetIntegrationPoints(int val) { num_integration_points = val; }
     virtual int GetIntegrationPointsU() override { return num_integration_points; }

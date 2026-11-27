@@ -57,6 +57,11 @@ public:
     /// Get the imposed fluid temperature at the external of the surface.
     double GetFluidTemperature() { return m_T_fluid; }
 
+    /// The heat flux depends on the surface temperature: the load provides its Jacobian with respect to the nodal
+    /// temperatures (stored at the velocity level of the temperature field), so that implicit integrators can
+    /// treat the convection implicitly.
+    virtual bool IsStiff() override { return true; }
+
     void SetIntegrationPoints(int val) { num_integration_points = val; }
     virtual int GetIntegrationPointsU() override { return num_integration_points; }
     virtual int GetIntegrationPointsV() override { return num_integration_points; }
