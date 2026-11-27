@@ -26,6 +26,7 @@ namespace mrole {
 // Static variables
 // -----------------------------------------------------------------------------
 const double mrole_SimpleDrivelineXWD::m_diff_bias = 2.0;
+const double mrole_SimpleDrivelineXWD::m_conicalgear_ratio = 0.1;  // as mrole_Driveline8WD
 
 // -----------------------------------------------------------------------------
 // Constructor of mrole_SimpleDriveline.

@@ -86,6 +86,10 @@ class CH_VEHICLE_API ChSimpleDrivelineXWD : public ChDrivelineWV {
     /// This is a simple model of a Torsen limited-slip differential.
     virtual double GetDifferentialMaxBias() const = 0;
 
+    /// Return the gear ratio of the conical gear of each driven axle (differential speed / driveshaft speed).
+    /// The default value of 1 corresponds to no reduction between driveshaft and axles.
+    virtual double GetConicalGearRatio() const { return 1; }
+
   private:
     bool m_connected;
     std::vector<bool> m_axle_locked;                       ///< differential locked, per driven axle

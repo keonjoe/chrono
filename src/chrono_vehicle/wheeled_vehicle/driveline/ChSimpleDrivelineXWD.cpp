@@ -72,6 +72,14 @@ void ChSimpleDrivelineXWD::Initialize(std::shared_ptr<ChChassis> chassis,
         m_shaft_right.push_back(axles[m_driven_axles[i]]->m_suspension->GetAxle(RIGHT));
     }
 
+    // Initialize the driveshaft speed from the initial wheel angular velocities (as calculated in Synchronize).
+    double alpha = 1.0 / double(m_shaft_left.size());
+    m_driveshaft_speed = 0;
+    for (int i = 0; i < m_shaft_left.size(); i++) {
+        m_driveshaft_speed -= alpha * 0.5 * (m_shaft_left[i]->GetPosDt() + m_shaft_right[i]->GetPosDt());
+    }
+    m_driveshaft_speed /= GetConicalGearRatio();
+
     ChPart::Initialize();
 }
 
@@ -118,11 +126,15 @@ void ChSimpleDrivelineXWD::Synchronize(double time, const DriverInputs& driver_i
 
     double alpha = 1.0 / double(m_shaft_left.size());
 
-    // Set driveshaft speed (output to transmission)
+    // Set driveshaft speed (output to transmission).
+    // The axle shafts spin opposite to the wheels and are driven by the negative of the wheel torque, so that a positive
+    // driveshaft speed and torque correspond to forward motion and traction (as in the shafts-based drivelines). The
+    // conical gears reduce the driveshaft speed by their gear ratio and amplify the torque by the inverse ratio.
     m_driveshaft_speed = 0;
     for (int i = 0; i < m_shaft_left.size(); i++) {
-        m_driveshaft_speed += alpha * 0.5 * (m_shaft_left[i]->GetPosDt() + m_shaft_right[i]->GetPosDt());
+        m_driveshaft_speed -= alpha * 0.5 * (m_shaft_left[i]->GetPosDt() + m_shaft_right[i]->GetPosDt());
     }
+    m_driveshaft_speed /= GetConicalGearRatio();
 
     // Split the input torque over all driven axles: equally, or (if the inter-axle distribution is locked) with a bias
     // that grows with the axle speed excess over the slowest axle, as for a Torsen differential.
@@ -156,7 +168,7 @@ void ChSimpleDrivelineXWD::Synchronize(double time, const DriverInputs& driver_i
     for (int axle = 0; axle < m_shaft_left.size(); axle++) {
         double torque_left;
         double torque_right;
-        double torque_axle = axle_fraction[axle] * driveshaft_torque;
+        double torque_axle = axle_fraction[axle] * driveshaft_torque / GetConicalGearRatio();
         bool locked = m_all_axles_locked || (axle < (int)m_axle_locked.size() && m_axle_locked[axle]);
         differentialSplitXWD(torque_axle, locked ? kLockedBiasXWD : GetDifferentialMaxBias(),
                              m_shaft_left[axle]->GetPosDt(), m_shaft_right[axle]->GetPosDt(), torque_left,

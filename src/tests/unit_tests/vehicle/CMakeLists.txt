@@ -19,6 +19,7 @@ build_utests(YES "${TESTS}" "vehicle" "${LIBS}" "${UTILS}")
 if(CH_ENABLE_MODULE_VEHICLE_MODELS)
   set(MODEL_TESTS
       utest_VEH_initial_speed
+      utest_VEH_simple_driveline
   )
   build_utests(YES "${MODEL_TESTS}" "vehicle" "${LIBS};ChronoModels_vehicle" "${UTILS}")
 endif()

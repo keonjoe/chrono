@@ -28,8 +28,8 @@ namespace man {
 const double MAN_5t_SimpleDriveline::m_front_torque_frac = 0.5;
 const double MAN_5t_SimpleDriveline::m_front_diff_bias = 2.0;
 const double MAN_5t_SimpleDriveline::m_rear_diff_bias = 2.0;
-const double MAN_5t_SimpleDriveline::m_front_conicalgear_ratio = 0.25;
-const double MAN_5t_SimpleDriveline::m_rear_conicalgear_ratio = 0.25;
+const double MAN_5t_SimpleDriveline::m_front_conicalgear_ratio = 1 / 3.947 / 1.706 / 1.02;  // as MAN_5t_Driveline4WD
+const double MAN_5t_SimpleDriveline::m_rear_conicalgear_ratio = 1 / 3.947 / 1.706 / 1.02;
 
 // -----------------------------------------------------------------------------
 

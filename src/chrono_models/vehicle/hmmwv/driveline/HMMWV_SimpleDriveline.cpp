@@ -28,8 +28,8 @@ namespace hmmwv {
 const double HMMWV_SimpleDriveline::m_front_torque_frac = 0.5;
 const double HMMWV_SimpleDriveline::m_front_diff_bias = 2.0;
 const double HMMWV_SimpleDriveline::m_rear_diff_bias = 2.0;
-const double HMMWV_SimpleDriveline::m_front_conicalgear_ratio = 0.25;
-const double HMMWV_SimpleDriveline::m_rear_conicalgear_ratio = 0.25;
+const double HMMWV_SimpleDriveline::m_front_conicalgear_ratio = 0.2;  // as HMMWV_Driveline4WD
+const double HMMWV_SimpleDriveline::m_rear_conicalgear_ratio = 0.2;
 
 // -----------------------------------------------------------------------------
 

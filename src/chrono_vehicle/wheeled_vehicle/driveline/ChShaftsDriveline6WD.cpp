@@ -35,6 +35,9 @@ ChShaftsDriveline6WD::ChShaftsDriveline6WD(const std::string& name)
     : ChDrivelineWV(name), m_dir_motor_block(ChVector3d(1, 0, 0)), m_dir_axle(ChVector3d(0, 1, 0)) {}
 
 ChShaftsDriveline6WD::~ChShaftsDriveline6WD() {
+    if (!IsInitialized())
+        return;
+
     auto sys = m_central_differential->GetSystem();
     if (sys) {
         sys->Remove(m_driveshaft);
@@ -84,9 +87,9 @@ void ChShaftsDriveline6WD::Initialize(std::shared_ptr<ChChassis> chassis,
     m_front_shaft->SetInertia(GetToFrontDiffShaftInertia());
     sys->AddShaft(m_front_shaft);
 
-    // Create the shaft connecting the central differential to the front differential.
+    // Create the shaft connecting the central differential to the first rear differential.
     m_rear1_shaft = chrono_types::make_shared<ChShaft>();
-    m_rear1_shaft->SetInertia(GetToFrontDiffShaftInertia());
+    m_rear1_shaft->SetInertia(GetToRearDiffShaftInertia());
     sys->AddShaft(m_rear1_shaft);
 
     // Create the shaft connecting the central differential to the rear differential.
@@ -116,7 +119,7 @@ void ChShaftsDriveline6WD::Initialize(std::shared_ptr<ChChassis> chassis,
     // Create a 1 d.o.f. object: a 'shaft' with rotational inertia.
     // This represents the inertia of the rotating box of the differential.
     m_front_differentialbox = chrono_types::make_shared<ChShaft>();
-    m_front_differentialbox->SetInertia(GetRearDifferentialBoxInertia());
+    m_front_differentialbox->SetInertia(GetFrontDifferentialBoxInertia());
     sys->AddShaft(m_front_differentialbox);
 
     // Create an angled gearbox, i.e a transmission ratio constraint between two
@@ -126,7 +129,7 @@ void ChShaftsDriveline6WD::Initialize(std::shared_ptr<ChChassis> chassis,
     // (the truss).
     m_front_conicalgear = chrono_types::make_shared<ChShaftsGearboxAngled>();
     m_front_conicalgear->Initialize(m_front_shaft, m_front_differentialbox, chassisBody, m_dir_motor_block, m_dir_axle);
-    m_front_conicalgear->SetTransmissionRatio(-GetRearConicalGearRatio());
+    m_front_conicalgear->SetTransmissionRatio(-GetFrontConicalGearRatio());
     sys->Add(m_front_conicalgear);
 
     // Create a differential, i.e. an epicycloidal mechanism that connects three
@@ -205,7 +208,7 @@ void ChShaftsDriveline6WD::Initialize(std::shared_ptr<ChChassis> chassis,
     // (the truss).
     m_rear1_conicalgear = chrono_types::make_shared<ChShaftsGearboxAngled>();
     m_rear1_conicalgear->Initialize(m_rear1_shaft, m_rear1_differentialbox, chassisBody, m_dir_motor_block, m_dir_axle);
-    m_rear1_conicalgear->SetTransmissionRatio(-GetFrontConicalGearRatio());
+    m_rear1_conicalgear->SetTransmissionRatio(-GetRearConicalGearRatio());
     sys->Add(m_rear1_conicalgear);
 
     // Create a differential, i.e. an epicycloidal mechanism that connects three
@@ -247,16 +250,16 @@ void ChShaftsDriveline6WD::Initialize(std::shared_ptr<ChChassis> chassis,
     double omega_rear2_differentialbox = 0.5 * (omega_axle_RL2 + omega_axle_RR2);
     m_rear2_differentialbox->SetPosDt(omega_rear2_differentialbox);
 
-    // Front conical gear
-    double omega_front_shaft = omega_front_differentialbox / GetFrontConicalGearRatio();
+    // Front conical gear (imposes w_differentialbox = t * w_shaft, with t its transmission ratio)
+    double omega_front_shaft = omega_front_differentialbox / m_front_conicalgear->GetTransmissionRatio();
     m_front_shaft->SetPosDt(omega_front_shaft);
 
-    // Rear1 conical gear
-    double omega_rear1_shaft = omega_rear1_differentialbox / GetRearConicalGearRatio();
+    // Rear1 conical gear (imposes w_differentialbox = t * w_shaft, with t its transmission ratio)
+    double omega_rear1_shaft = omega_rear1_differentialbox / m_rear1_conicalgear->GetTransmissionRatio();
     m_rear1_shaft->SetPosDt(omega_rear1_shaft);
 
-    // Rear2 conical gear
-    double omega_rear2_shaft = omega_rear2_differentialbox / GetRearConicalGearRatio();
+    // Rear2 conical gear (imposes w_differentialbox = t * w_shaft, with t its transmission ratio)
+    double omega_rear2_shaft = omega_rear2_differentialbox / m_rear2_conicalgear->GetTransmissionRatio();
     m_rear2_shaft->SetPosDt(omega_rear2_shaft);
 
     // Central differential

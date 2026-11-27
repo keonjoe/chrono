@@ -42,6 +42,11 @@ void Gator_SimpleDriveline::Initialize(std::shared_ptr<ChChassis> chassis,
     // Grab handles to the suspension wheel shafts.
     m_left = axles[m_driven_axles[0]]->m_suspension->GetAxle(LEFT);
     m_right = axles[m_driven_axles[0]]->m_suspension->GetAxle(RIGHT);
+
+    // Initialize the driveshaft speed from the initial wheel angular velocities (as calculated in Synchronize).
+    m_driveshaft_speed = -0.5 * (m_left->GetPosDt() + m_right->GetPosDt());
+
+    ChPart::Initialize();
 }
 
 // -----------------------------------------------------------------------------
@@ -49,8 +54,8 @@ void Gator_SimpleDriveline::Synchronize(double time, const DriverInputs& driver_
     if (!m_connected)
         return;
 
-    // Enforce driveshaft speed
-    m_driveshaft_speed = 0.5 * (m_left->GetPosDt() + m_right->GetPosDt());
+    // Enforce driveshaft speed (the axle shafts spin opposite to the wheels; positive for forward motion)
+    m_driveshaft_speed = -0.5 * (m_left->GetPosDt() + m_right->GetPosDt());
 
     // Split the driveshaft torque for the corresponding left/right wheels.
     // Use a simple model of a Torsten limited-slip differential with a max_bias:1 torque bias ratio.

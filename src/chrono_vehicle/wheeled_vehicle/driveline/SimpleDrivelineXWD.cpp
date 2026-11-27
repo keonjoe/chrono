@@ -46,6 +46,10 @@ void SimpleDrivelineXWD::Create(const rapidjson::Document& d) {
     ChPart::Create(d);
 
     m_diff_bias = d["Differential Max Bias"].GetDouble();
+
+    // Optional conical gear ratio (default: no reduction)
+    if (d.HasMember("Conical Gear Ratio"))
+        m_conicalgear_ratio = d["Conical Gear Ratio"].GetDouble();
 }
 
 }  // end namespace vehicle

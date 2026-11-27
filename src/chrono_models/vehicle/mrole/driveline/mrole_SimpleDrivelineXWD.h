@@ -38,9 +38,11 @@ class CH_MODELS_API mrole_SimpleDrivelineXWD : public ChSimpleDrivelineXWD {
     ~mrole_SimpleDrivelineXWD() {}
 
     virtual double GetDifferentialMaxBias() const override { return m_diff_bias; }
+    virtual double GetConicalGearRatio() const override { return m_conicalgear_ratio; }
 
   private:
     static const double m_diff_bias;
+    static const double m_conicalgear_ratio;
 };
 
 /// @} vehicle_models_mrole

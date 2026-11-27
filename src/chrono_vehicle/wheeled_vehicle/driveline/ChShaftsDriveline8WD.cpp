@@ -35,6 +35,9 @@ ChShaftsDriveline8WD::ChShaftsDriveline8WD(const std::string& name)
     : ChDrivelineWV(name), m_dir_motor_block(ChVector3d(1, 0, 0)), m_dir_axle(ChVector3d(0, 1, 0)) {}
 
 ChShaftsDriveline8WD::~ChShaftsDriveline8WD() {
+    if (!IsInitialized())
+        return;
+
     auto sys = m_central_differential->GetSystem();
     if (sys) {
         sys->Remove(m_driveshaft);
@@ -163,7 +166,8 @@ void ChShaftsDriveline8WD::Initialize(std::shared_ptr<ChChassis> chassis,
         double omega_diffbox = 0.5 * (omega_L + omega_R);
         m_AD_differentialbox[i]->SetPosDt(omega_diffbox);
 
-        omega_AD_inshaft[i] = omega_diffbox / GetAxleDiffConicalGearRatio();
+        // the conical gear imposes w_diffbox = t * w_inshaft, with t its transmission ratio
+        omega_AD_inshaft[i] = omega_diffbox / m_AD_conicalgear[i]->GetTransmissionRatio();
         m_AD_inshaft[i]->SetPosDt(omega_AD_inshaft[i]);
     }
 

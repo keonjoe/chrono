@@ -3,5 +3,6 @@
   "Type":                       "Driveline",
   "Template":                   "SimpleDrivelineXWD",
 
-  "Differential Max Bias":  2.0
+  "Differential Max Bias":  2.0,
+  "Conical Gear Ratio":     0.145597
 }

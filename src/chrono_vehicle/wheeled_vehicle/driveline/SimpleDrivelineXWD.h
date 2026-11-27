@@ -38,11 +38,13 @@ class CH_VEHICLE_API SimpleDrivelineXWD : public ChSimpleDrivelineXWD {
     ~SimpleDrivelineXWD() {}
 
     virtual double GetDifferentialMaxBias() const override { return m_diff_bias; }
+    virtual double GetConicalGearRatio() const override { return m_conicalgear_ratio; }
 
   private:
     virtual void Create(const rapidjson::Document& d) override;
 
     double m_diff_bias;
+    double m_conicalgear_ratio{1.0};
 };
 
 /// @} vehicle_wheeled_driveline

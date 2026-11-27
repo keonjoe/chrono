@@ -70,6 +70,12 @@ void ChSimpleDriveline::Initialize(std::shared_ptr<ChChassis> chassis,
     m_rear_left = axles[m_driven_axles[1]]->m_suspension->GetAxle(LEFT);
     m_rear_right = axles[m_driven_axles[1]]->m_suspension->GetAxle(RIGHT);
 
+    // Initialize the driveshaft speed from the initial wheel angular velocities (as calculated in Synchronize).
+    double alpha = GetFrontTorqueFraction();
+    double speed_front = -0.5 * (m_front_left->GetPosDt() + m_front_right->GetPosDt()) / GetFrontConicalGearRatio();
+    double speed_rear = -0.5 * (m_rear_left->GetPosDt() + m_rear_right->GetPosDt()) / GetRearConicalGearRatio();
+    m_driveshaft_speed = alpha * speed_front + (1 - alpha) * speed_rear;
+
     ChPart::Initialize();
 }
 
@@ -114,19 +120,22 @@ void ChSimpleDriveline::Synchronize(double time, const DriverInputs& driver_inpu
     if (!m_connected)
         return;
 
-    if (std::abs(driveshaft_torque) < m_zero_torque)
-        return;
-
     double alpha = GetFrontTorqueFraction();
 
-    // Set driveshaft speed (output to transmission)
-    double speed_front = 0.5 * (m_front_left->GetPosDt() + m_front_right->GetPosDt());
-    double speed_rear = 0.5 * (m_rear_left->GetPosDt() + m_rear_right->GetPosDt());
-
-    speed_front *= GetFrontConicalGearRatio();
-    speed_rear *= GetRearConicalGearRatio();
+    // Set driveshaft speed (output to transmission).
+    // Each conical gear reduces the driveshaft speed by its gear ratio (w_differential = ratio * w_driveshaft, with the
+    // differential speed the mean of the two axle speeds) and amplifies the torque by the inverse ratio. The axle shafts
+    // spin opposite to the wheels and are driven by the negative of the wheel torque, so that a positive driveshaft
+    // speed and torque correspond to forward motion and traction (as in the shafts-based drivelines). With the
+    // driveshaft speed weighted by the torque fractions, the driveshaft power equals the power delivered to the axles.
+    double speed_front = -0.5 * (m_front_left->GetPosDt() + m_front_right->GetPosDt()) / GetFrontConicalGearRatio();
+    double speed_rear = -0.5 * (m_rear_left->GetPosDt() + m_rear_right->GetPosDt()) / GetRearConicalGearRatio();
 
     m_driveshaft_speed = alpha * speed_front + (1 - alpha) * speed_rear;
+
+    // Driveshaft torques within the zero-torque band are not transmitted
+    if (std::abs(driveshaft_torque) < m_zero_torque)
+        driveshaft_torque = 0;
 
     // Split the input torque front/back (fixed fraction, or biased towards the slower axle if the central differential
     // is locked).
