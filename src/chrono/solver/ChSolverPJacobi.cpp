@@ -12,6 +12,8 @@
 // Authors: Alessandro Tasora, Radu Serban
 // =============================================================================
 
+#include <algorithm>
+
 #include "chrono/solver/ChSolverPJacobi.h"
 #include "chrono/utils/ChConstants.h"
 
@@ -57,6 +59,7 @@ double ChSolverPJacobi::Solve(ChSystemDescriptor& sysd) {
     //    lagrangian reactions of constraints, if a warm start is desired.
     //    Otherwise, if no warm start, simply resets initial lagrangians to zero.
     if (m_warm_start) {
+        sysd.SchurComplementIncrementVariables();
     } else {
         for (unsigned int ic = 0; ic < constraints.size(); ic++)
             constraints[ic]->SetLagrangeMultiplier(0);
@@ -83,11 +86,16 @@ double ChSolverPJacobi::Solve(ChSystemDescriptor& sysd) {
                                    constraints[ic]->GetRightHandSide() +
                                    constraints[ic]->GetComplianceTerm() * constraints[ic]->GetLagrangeMultiplier();
 
-                // true constraint violation may be different from 'mresidual' (ex:clamped if unilateral)
-                double candidate_violation = fabs(constraints[ic]->Violation(mresidual));
+                // The violation of a row is measured by its projected correction, g_i * |delta_gamma| / omega (velocity
+                // units): this is |c_i| for a bilateral row and zero only where the complementarity conditions hold (a
+                // contact that keeps a positive reaction while separating, or a sticking friction force, is not converged).
+                double candidate_violation = 0;
 
                 // compute:  delta_lambda = -(omega/g_i) * ([Cq_i]*q + b_i + cfm_i*l_i )
-                double deltal = (m_omega / constraints[ic]->GetSchurComplement()) * (-mresidual);
+                // A row with a zero Schur complement acts on no active variable (e.g. a joint between two fixed bodies):
+                // its multiplier is not updated.
+                bool degenerate = !(constraints[ic]->GetSchurComplement() > 0);
+                double deltal = degenerate ? 0 : (m_omega / constraints[ic]->GetSchurComplement()) * (-mresidual);
 
                 if (constraints[ic]->GetMode() == ChConstraint::Mode::FRICTION) {
                     candidate_violation = 0;
@@ -96,9 +104,6 @@ double ChSolverPJacobi::Solve(ChSystemDescriptor& sysd) {
                     old_lambda_friction[i_friction_comp] = constraints[ic]->GetLagrangeMultiplier();
                     constraints[ic]->SetLagrangeMultiplier(old_lambda_friction[i_friction_comp] + deltal);
                     i_friction_comp++;
-
-                    if (i_friction_comp == 1)
-                        candidate_violation = fabs(std::min(0.0, mresidual));
 
                     if (i_friction_comp == 3) {
                         constraints[ic - 2]->Project();  // the N normal component will take care of N,U,V
@@ -118,6 +123,11 @@ double ChSolverPJacobi::Solve(ChSystemDescriptor& sysd) {
                         delta_gammas[ic - 1] = new_lambda_1 - old_lambda_friction[1];
                         delta_gammas[ic - 0] = new_lambda_2 - old_lambda_friction[2];
                         // Do NOT update the primal variables now - postponed
+
+                        candidate_violation = std::max({constraints[ic - 2]->GetSchurComplement() * fabs(delta_gammas[ic - 2]),
+                                                        constraints[ic - 1]->GetSchurComplement() * fabs(delta_gammas[ic - 1]),
+                                                        constraints[ic - 0]->GetSchurComplement() * fabs(delta_gammas[ic - 0])}) /
+                                              (m_omega * m_shlambda);
 
                         if (this->record_violation_history) {
                             maxdeltalambda = std::max(maxdeltalambda, fabs(delta_gammas[ic - 2]));
@@ -147,6 +157,8 @@ double ChSolverPJacobi::Solve(ChSystemDescriptor& sysd) {
                     // Do NOT update the primal variables now - postponed
 
                     delta_gammas[ic] = new_lambda - old_lambda;
+
+                    candidate_violation = constraints[ic]->GetSchurComplement() * fabs(delta_gammas[ic]) / (m_omega * m_shlambda);
 
                     if (this->record_violation_history)
                         maxdeltalambda = std::max(maxdeltalambda, fabs(delta_gammas[ic]));

@@ -18,6 +18,7 @@ SET(TESTS
     utest_CH_pulley
     utest_CH_euler_linearized_damping
     utest_CH_solver_apgd
+    utest_CH_solver_vi
 )
 
 if(CH_ENABLE_MODULE_PARDISO_MKL)

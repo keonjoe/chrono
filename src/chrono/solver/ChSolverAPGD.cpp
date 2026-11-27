@@ -14,7 +14,9 @@
 
 #include "chrono/solver/ChSolverAPGD.h"
 
+#include <cmath>
 #include <iostream>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <valarray>
@@ -35,14 +37,18 @@ double ChSolverAPGD::Solve(ChSystemDescriptor& sysd) {
         throw std::runtime_error("ChSolverAPGD: System descriptor does not support Schur complement-based solvers.");
     }
 
+    // Diagonal preconditioning: the iteration works in the metric of D = diag(N). The Euclidean projection onto the
+    // friction cones is a projection in this metric only if D is uniform within each cone, so the diagonal entries of
+    // friction constraints are averaged (not available with a non-block diagonal mass matrix).
+    bool use_precond = m_use_precond && !sysd.HasMassInverse();
+
     // Update auxiliary data in all constraints
-    sysd.SchurComplementUpdateConstraints(false);
+    sysd.SchurComplementUpdateConstraints(use_precond);
 
     double L, t;
     double theta;
     double thetaNew;
     double Beta;
-    double obj1, obj2;
 
     nc = sysd.CountActiveConstraints();
     gamma_hat.resize(nc);
@@ -57,8 +63,6 @@ double ChSolverAPGD::Solve(ChSystemDescriptor& sysd) {
     residual = 10e30;
 
     Beta = 0.0;
-    obj1 = 0.0;
-    obj2 = 0.0;
 
     // Compute the RHS vector in the Schur complement equation N*l = b_schur
     // Cache M^-1 * f in 'Mif'
@@ -68,6 +72,7 @@ double ChSolverAPGD::Solve(ChSystemDescriptor& sysd) {
     // If no constraints, return now. Variables contain M^-1 * f after call to SchurComplementRHS.
     // This early exit is needed, else we get division by zero and a potential infinite loop.
     if (nc == 0) {
+        residual = 0;
         return 0;
     }
 
@@ -80,6 +85,29 @@ double ChSolverAPGD::Solve(ChSystemDescriptor& sysd) {
     }
     sysd.FromConstraintsToVector(gamma);
 
+    // Inverse of the diagonal preconditioner, D^-1 = diag(N)^-1 (identity if no preconditioning).
+    // A row with a zero, negligible or non-finite diagonal entry acts on no active variable (e.g. a joint between two
+    // fixed bodies): its multiplier is kept at zero and its right-hand side is ignored, with a unit preconditioner entry.
+    ChVectorDynamic<> Di(nc);
+    sysd.SchurComplementProduct(yNew, gamma, &Di);
+    double Dmax = 0;
+    for (int i = 0; i < nc; i++) {
+        if (std::isfinite(1 / Di(i)))
+            Dmax = std::max(Dmax, 1 / Di(i));
+    }
+    for (int i = 0; i < nc; i++) {
+        double Dii = 1 / Di(i);
+        if (!std::isfinite(Dii) || !(Dii > std::numeric_limits<double>::epsilon() * Dmax)) {
+            gamma(i) = 0;
+            r(i) = 0;
+            Di(i) = 1;
+        }
+    }
+    if (!use_precond)
+        Di.setOnes();
+    ChVectorDynamic<> gstep(nc);
+    ChVectorDynamic<> gproj(nc);
+
     // (2) gamma_hat_0 = ones(nc,1)
     gamma_hat.setConstant(1.0);
 
@@ -90,14 +118,19 @@ double ChSolverAPGD::Solve(ChSystemDescriptor& sysd) {
     theta = 1.0;
 
     // (5) L_k = norm(N * (gamma_0 - gamma_hat_0)) / norm(gamma_0 - gamma_hat_0)
+    //     in the metric of D: norm(D^(-1/2) * N * (gamma_0 - gamma_hat_0)) / norm(D^(1/2) * (gamma_0 - gamma_hat_0))
     tmp = gamma - gamma_hat;
-    L = tmp.norm();
     sysd.SchurComplementProduct(yNew, tmp);  // yNew = N * tmp = N * (gamma - gamma_hat)
-    L = yNew.norm() / L;
+    L = std::sqrt(yNew.dot(Di.cwiseProduct(yNew)) / tmp.dot(tmp.cwiseQuotient(Di)));
+    if (!std::isfinite(L) || L <= 0)
+        L = 1.0;     // no estimate (e.g. N * tmp = 0); the line search adjusts L
     yNew.setZero();  //// RADU  is this really necessary here?
 
     // (6) t_k = 1 / L_k
     t = 1.0 / L;
+
+    // Fallback solution, if no iterate gets a finite residual
+    gamma_hat = gamma;
 
     //// RADU
     //// Check consistency (e.g. sign of 'r' in comments vs. code)
@@ -108,37 +141,33 @@ double ChSolverAPGD::Solve(ChSystemDescriptor& sysd) {
     // (7) for k := 0 to N_max
     for (m_iterations = 0; m_iterations < m_max_iterations; m_iterations++) {
         // (8) g = N * y_k - r
-        // (9) gamma_(k+1) = ProjectionOperator(y_k - t_k * g)
+        // (9) gamma_(k+1) = ProjectionOperator(y_k - t_k * D^-1 * g)
         sysd.SchurComplementProduct(g, y);  // g = N * y
         g -= r;                             // g = N * y - r
-        gammaNew = y - t * g;
+        gammaNew = y - t * Di.cwiseProduct(g);
         sysd.ConstraintsProject(gammaNew);
 
-        // (10) while 0.5 * gamma_(k+1)' * N * gamma_(k+1) + gamma_(k+1)' * r >=
-        //            0.5 * y_k' * N * y_k + y_k' * r + g' * (gamma_(k+1) - y_k) + 0.5 * L_k * norm(gamma_(k+1) - y_k)^2
-        sysd.SchurComplementProduct(tmp, gammaNew);  // tmp = N * gammaNew;
-        obj1 = gammaNew.dot(0.5 * tmp - r);
+        // (10) while 0.5 * gamma_(k+1)' * N * gamma_(k+1) - gamma_(k+1)' * r >
+        //            0.5 * y_k' * N * y_k - y_k' * r + g' * (gamma_(k+1) - y_k) + 0.5 * L_k * |gamma_(k+1) - y_k|_D^2
+        // For the quadratic objective, with d = gamma_(k+1) - y_k, this is d' * N * d > L_k * d' * D * d.
+        // Evaluate it in this form: the difference of the objective values loses all significant digits once the
+        // step is small compared to the multipliers, and the test would then double L_k without bound.
+        tmp = gammaNew - y;
+        sysd.SchurComplementProduct(yNew, tmp);  // yNew = N * (gamma_(k+1) - y_k)
 
-        sysd.SchurComplementProduct(tmp, y);  // tmp = N * y;
-        obj2 = y.dot(0.5 * tmp - r) + (gammaNew - y).dot(g + 0.5 * L * (gammaNew - y));
-
-        while (obj1 >= obj2) {
+        while (tmp.dot(yNew) > L * tmp.dot(tmp.cwiseQuotient(Di))) {
             // (11) L_k = 2 * L_k
             L = 2.0 * L;
 
             // (12) t_k = 1 / L_k
             t = 1.0 / L;
 
-            // (13) gamma_(k+1) = ProjectionOperator(y_k - t_k * g)
-            gammaNew = y - t * g;
+            // (13) gamma_(k+1) = ProjectionOperator(y_k - t_k * D^-1 * g)
+            gammaNew = y - t * Di.cwiseProduct(g);
             sysd.ConstraintsProject(gammaNew);
 
-            // Update obj1 and obj2
-            sysd.SchurComplementProduct(tmp, gammaNew);  // tmp = N * gammaNew;
-            obj1 = gammaNew.dot(0.5 * tmp - r);
-
-            sysd.SchurComplementProduct(tmp, y);  // tmp = N * y;
-            obj2 = y.dot(0.5 * tmp - r) + (gammaNew - y).dot(g + 0.5 * L * (gammaNew - y));
+            tmp = gammaNew - y;
+            sysd.SchurComplementProduct(yNew, tmp);  // yNew = N * (gamma_(k+1) - y_k)
         }  // (14) endwhile
 
         // (15) theta_(k+1) = (-theta_k^2 + theta_k * sqrt(theta_k^2 + 4)) / 2
@@ -153,12 +182,19 @@ double ChSolverAPGD::Solve(ChSystemDescriptor& sysd) {
         // (18) r = r(gamma_(k+1))
         // Project the gradient (for rollback strategy)
         // g_proj = (l-project_orthogonal(l - gdiff*g, fric))/gdiff;
+        // evaluated as g + [(l - gdiff*g) - ProjectionOperator(l - gdiff*g)] / gdiff, exact for the entries not changed
+        // by the projection (the difference l - (l - gdiff*g) loses gdiff*g in floating point when |l| >> gdiff*|g|)
         double gdiff = 1.0 / (nc * nc);
         sysd.SchurComplementProduct(tmp, gammaNew);  // tmp = N * gammaNew
-        tmp = gammaNew - gdiff * (tmp - r);          // Note: no aliasing issues here
-        sysd.ConstraintsProject(tmp);                // tmp = ProjectionOperator(gammaNew - gdiff * g)
-        tmp = (gammaNew - tmp) / gdiff;              // Note: no aliasing issues here
-        double res = tmp.norm();
+        tmp -= r;                                    // tmp = g = N * gammaNew - r
+        gstep = gammaNew - gdiff * tmp;              // gstep = gammaNew - gdiff * g
+        gproj = gstep;
+        sysd.ConstraintsProject(gproj);  // gproj = ProjectionOperator(gammaNew - gdiff * g)
+        double res = (tmp + (gstep - gproj) / gdiff).norm();
+
+        // Stop on a non-finite iterate, keeping the best solution found so far
+        if (!std::isfinite(res))
+            break;
 
         if (res < residual) {      // (19) if r < epsilon_min
             residual = res;        // (20) r_min = r
@@ -166,6 +202,7 @@ double ChSolverAPGD::Solve(ChSystemDescriptor& sysd) {
         }                          // (22) endif
 
         if (residual < m_tolerance) {  // (23) if r < Tau
+            m_iterations++;            //      (count the current iteration)
             break;                     // (24) break
         }                              // (25) endif
 

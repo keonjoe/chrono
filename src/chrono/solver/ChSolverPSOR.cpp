@@ -12,6 +12,8 @@
 // Authors: Alessandro Tasora, Radu Serban
 // =============================================================================
 
+#include <algorithm>
+
 #include "chrono/solver/ChSolverPSOR.h"
 #include "chrono/utils/ChConstants.h"
 
@@ -86,11 +88,16 @@ double ChSolverPSOR::Solve(ChSystemDescriptor& sysd) {
                                    constraints[ic]->GetRightHandSide() +
                                    constraints[ic]->GetComplianceTerm() * constraints[ic]->GetLagrangeMultiplier();
 
-                // true constraint violation may be different from 'mresidual' (ex:clamped if unilateral)
-                double candidate_violation = fabs(constraints[ic]->Violation(mresidual));
+                // The violation of a row is measured by its projected correction, g_i * |true_delta| / omega (velocity
+                // units): this is |c_i| for a bilateral row and zero only where the complementarity conditions hold (a
+                // contact that keeps a positive reaction while separating, or a sticking friction force, is not converged).
+                double candidate_violation = 0;
 
                 // compute:  delta_lambda = -(omega/g_i) * ([Cq_i]*q + b_i + cfm_i*l_i )
-                double deltal = (m_omega / constraints[ic]->GetSchurComplement()) * (-mresidual);
+                // A row with a zero Schur complement acts on no active variable (e.g. a joint between two fixed bodies):
+                // its multiplier is not updated.
+                bool degenerate = !(constraints[ic]->GetSchurComplement() > 0);
+                double deltal = degenerate ? 0 : (m_omega / constraints[ic]->GetSchurComplement()) * (-mresidual);
 
                 if (constraints[ic]->GetMode() == ChConstraint::Mode::FRICTION) {
                     candidate_violation = 0;
@@ -99,9 +106,6 @@ double ChSolverPSOR::Solve(ChSystemDescriptor& sysd) {
                     old_lambda_friction[i_friction_comp] = constraints[ic]->GetLagrangeMultiplier();
                     constraints[ic]->SetLagrangeMultiplier(old_lambda_friction[i_friction_comp] + deltal);
                     i_friction_comp++;
-
-                    if (i_friction_comp == 1)
-                        candidate_violation = fabs(std::min(0.0, mresidual));
 
                     if (i_friction_comp == 3) {
                         constraints[ic - 2]->Project();  // the N normal component will take care of N,U,V
@@ -124,6 +128,11 @@ double ChSolverPSOR::Solve(ChSystemDescriptor& sysd) {
                         constraints[ic - 1]->IncrementState(true_delta_1);
                         constraints[ic - 0]->IncrementState(true_delta_2);
 
+                        candidate_violation =
+                            std::max({constraints[ic - 2]->GetSchurComplement() * fabs(true_delta_0), constraints[ic - 1]->GetSchurComplement() * fabs(true_delta_1),
+                                      constraints[ic - 0]->GetSchurComplement() * fabs(true_delta_2)}) /
+                            (m_omega * m_shlambda);
+
                         if (this->record_violation_history) {
                             maxdeltalambda = std::max(maxdeltalambda, fabs(true_delta_0));
                             maxdeltalambda = std::max(maxdeltalambda, fabs(true_delta_1));
@@ -136,7 +145,6 @@ double ChSolverPSOR::Solve(ChSystemDescriptor& sysd) {
                     old_lambda_friction[0] = constraints[ic]->GetLagrangeMultiplier();
                     constraints[ic]->SetLagrangeMultiplier(old_lambda_friction[0] + deltal);
 
-                    candidate_violation = fabs(std::min(0.0, mresidual));
                     constraints[ic]->Project();
                     double new_lambda_0 = constraints[ic]->GetLagrangeMultiplier();
                     if (m_shlambda != 1.0) {
@@ -146,6 +154,8 @@ double ChSolverPSOR::Solve(ChSystemDescriptor& sysd) {
 
                     double true_delta_0 = new_lambda_0 - old_lambda_friction[0];
                     constraints[ic]->IncrementState(true_delta_0);
+
+                    candidate_violation = constraints[ic]->GetSchurComplement() * fabs(true_delta_0) / (m_omega * m_shlambda);
 
                     if (this->record_violation_history) {
                         maxdeltalambda = std::max(maxdeltalambda, fabs(true_delta_0));
@@ -174,6 +184,8 @@ double ChSolverPSOR::Solve(ChSystemDescriptor& sysd) {
                     // For all items with variables, add the effect of incremented
                     // (and projected) lagrangian reactions:
                     constraints[ic]->IncrementState(true_delta);
+
+                    candidate_violation = constraints[ic]->GetSchurComplement() * fabs(true_delta) / (m_omega * m_shlambda);
 
                     if (this->record_violation_history)
                         maxdeltalambda = std::max(maxdeltalambda, fabs(true_delta));

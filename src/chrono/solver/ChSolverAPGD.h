@@ -24,6 +24,10 @@ namespace chrono {
 
 /// An iterative solver based on Nesterov's Projected Gradient Descent.
 ///
+/// Notes:
+/// - can not solve problems including stiffness or damping blocks in system descriptor (e.g. coming from FEA)
+/// - diagonal preconditioning is available (enabled by default)
+///
 /// See ChSystemDescriptor for more information about the problem formulation and solver data structures.
 class ChApi ChSolverAPGD : public ChIterativeSolverVI {
   public:

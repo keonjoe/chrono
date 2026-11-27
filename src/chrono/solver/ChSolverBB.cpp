@@ -12,6 +12,9 @@
 // Authors: Alessandro Tasora, Radu Serban
 // =============================================================================
 
+#include <cmath>
+#include <limits>
+
 #include "chrono/solver/ChSolverBB.h"
 #include "chrono/utils/ChConstants.h"
 
@@ -20,7 +23,7 @@ namespace chrono {
 // Register into the object factory, to enable run-time dynamic creation and persistence
 CH_FACTORY_REGISTER(ChSolverBB)
 
-ChSolverBB::ChSolverBB() : n_armijo(10), max_armijo_backtrace(3), lastgoodres(1e30) {}
+ChSolverBB::ChSolverBB() : n_armijo(10), max_armijo_backtrace(3), lastgoodres(0) {}
 
 double ChSolverBB::Solve(ChSystemDescriptor& sysd) {
     if (!sysd.SupportsSchurComplement()) {
@@ -63,6 +66,7 @@ double ChSolverBB::Solve(ChSystemDescriptor& sysd) {
     ChVectorDynamic<> ms(nc);
     ChVectorDynamic<> my(nc);
     ChVectorDynamic<> mDg(nc);
+    ChVectorDynamic<> ml_proj(nc);
 
     // Update auxiliary data in constraints
     // Average entries for friction constraints
@@ -82,19 +86,33 @@ double ChSolverBB::Solve(ChSystemDescriptor& sysd) {
     // Initial projection of ml   ***TO DO***?
     sysd.ConstraintsProject(ml);
 
+    // Cache the inverse diagonal of N (used by the diagonal preconditioner).
+    // A row with a zero, negligible or non-finite diagonal entry acts on no active variable (e.g. a joint between two
+    // fixed bodies): its multiplier is kept at zero and its right-hand side is ignored, with a unit preconditioner entry.
+    ChVectorDynamic<> iD(nc);
+    sysd.SchurComplementProduct(mg, ml, &iD);
+    double Dmax = 0;
+    for (int i = 0; i < nc; i++) {
+        if (std::isfinite(1 / iD(i)))
+            Dmax = std::max(Dmax, 1 / iD(i));
+    }
+    for (int i = 0; i < nc; i++) {
+        double Dii = 1 / iD(i);
+        if (!std::isfinite(Dii) || !(Dii > std::numeric_limits<double>::epsilon() * Dmax)) {
+            ml(i) = 0;
+            mb(i) = 0;
+            iD(i) = 1;
+        }
+    }
+
     // Fallback solution
     lastgoodres = 1e30;
     ml_candidate = ml;
 
     // Calculate g = grad(0.5*l'*N*l-l'*b) = N*l-b
-    // If using a diagonal preconditioner, cache the inverse diagonal of N
-    ChVectorDynamic<> iD(nc);
 
-    // 1) g = N*l 
-    if (m_use_precond)
-        sysd.SchurComplementProduct(mg, ml, &iD);
-    else
-        sysd.SchurComplementProduct(mg, ml);
+    // 1) g = N*l
+    sysd.SchurComplementProduct(mg, ml);
 
     // 2) g = N*l -b
     mg -= mb;
@@ -106,9 +124,13 @@ double ChSolverBB::Solve(ChSystemDescriptor& sysd) {
 
     // Iterations
 
-    double mf_p = 0;
-    double mf = 1e29;
+    // Objective at the initial iterate, f = 0.5*l'*N*l - l'*b = 0.5*l'*(g - b)
+    double mf = 0.5 * ml.dot(mg - mb);
+    double mf_p = mf;
+
+    // Objective at the accepted iterates, for the non-monotone line search
     std::vector<double> f_hist;
+    f_hist.push_back(mf);
 
     std::fill(violation_history.begin(), violation_history.end(), 0.0);
     std::fill(dlambda_history.begin(), dlambda_history.end(), 0.0);
@@ -142,6 +164,12 @@ double ChSolverBB::Solve(ChSystemDescriptor& sysd) {
         int n_backtracks = 0;
         bool armijo_repeat = true;
 
+        // Reference value of the non-monotone Armijo condition: the largest objective over the last n_armijo
+        // accepted iterates, the current one included
+        double max_compare = mf;
+        for (int h = 1; h < std::min((int)f_hist.size(), this->n_armijo); h++)
+            max_compare = std::max(max_compare, f_hist[f_hist.size() - 1 - h]);
+
         while (armijo_repeat) {
             // l_p = l + lambda*dir;
             ml_p = ml + lambda * mdir;
@@ -155,19 +183,8 @@ double ChSolverBB::Solve(ChSystemDescriptor& sysd) {
             // f_p = 0.5*l_p'*N*l_p - l_p'*b  = l_p'*(0.5*Nl_p - b);
             mf_p = ml_p.dot(0.5 * mb_tmp - mb);
 
-            f_hist.push_back(mf_p);
-
-            double max_compare = 10e29;
-            for (int h = 1; h <= std::min(iter, this->n_armijo); h++) {
-                double compare = f_hist[iter - h] + gamma * lambda * dTg;
-                if (compare > max_compare)
-                    max_compare = compare;
-            }
-
-            if (mf_p > max_compare) {
+            if (mf_p > max_compare + gamma * lambda * dTg) {
                 armijo_repeat = true;
-                if (iter > 0)
-                    mf = f_hist[iter - 1];
                 double lambdanew = -lambda * lambda * dTg / (2 * (mf_p - mf - lambda * dTg));
                 lambda = std::max(sigma_min * lambda, std::min(sigma_max * lambda, lambdanew));
                 if (verbose)
@@ -185,6 +202,8 @@ double ChSolverBB::Solve(ChSystemDescriptor& sysd) {
         my = mg_p - mg;  // y = g_p - g;
         ml = ml_p;       // l = l_p;
         mg = mg_p;       // g = g_p;
+        mf = mf_p;       // f = f_p;
+        f_hist.push_back(mf);
 
         if (((do_BB1e2) && (iter % 2 == 0)) || do_BB1) {
             if (m_use_precond)
@@ -239,10 +258,17 @@ double ChSolverBB::Solve(ChSystemDescriptor& sysd) {
 
         // Project the gradient (for rollback strategy)
         // g_proj = (l-project_orthogonal(l - gdiff*g, fric))/gdiff;
+        // evaluated as g + [(l - gdiff*g) - ProjectionOperator(l - gdiff*g)] / gdiff, exact for the entries not changed
+        // by the projection (the difference l - (l - gdiff*g) loses gdiff*g in floating point when |l| >> gdiff*|g|)
         mb_tmp = ml - gdiff * mg;
-        sysd.ConstraintsProject(mb_tmp);     // mb_tmp = ProjectionOperator(l - gdiff * g)
-        mb_tmp = (ml - mb_tmp) / gdiff;      // mb_tmp = [l - ProjectionOperator(l - gdiff * g)] / gdiff
-        double g_proj_norm = mb_tmp.norm();  // infinity norm is faster..
+        ml_proj = mb_tmp;
+        sysd.ConstraintsProject(ml_proj);          // ml_proj = ProjectionOperator(l - gdiff * g)
+        mb_tmp = mg + (mb_tmp - ml_proj) / gdiff;  // mb_tmp = [l - ProjectionOperator(l - gdiff * g)] / gdiff
+        double g_proj_norm = mb_tmp.norm();        // infinity norm is faster..
+
+        // Stop on a non-finite iterate, keeping the best solution found so far
+        if (!std::isfinite(g_proj_norm))
+            break;
 
         // Rollback solution: the last best candidate ('l' with lowest projected gradient)
         // in fact the method is not monotone and it is quite 'noisy', if we do not
