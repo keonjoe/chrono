@@ -416,18 +416,22 @@ int cbtVoronoiSimplexSolver::pointOutsideOfPlane(const cbtVector3& p, const cbtV
 	cbtScalar signd = (d - a).dot(normal);  // [AD AB AC]
 
 #ifdef CATCH_DEGENERATE_TETRAHEDRON
+	/* ***CHRONO*** */
+	// The tetrahedron is degenerate when its volume (|signd| / 6) is at the level of the rounding errors, i.e. relative
+	// to |AD| * |normal|, which bounds |signd| from above. An absolute threshold declares the tetrahedra of small shapes
+	// (a few centimeters), and the long thin tetrahedra of large flat-sided shapes, degenerate, which stops GJK with a
+	// separating axis that has not converged. The absolute threshold is kept as an upper bound.
 #ifdef BT_USE_DOUBLE_PRECISION
-	if (signd * signd < (cbtScalar(1e-8) * cbtScalar(1e-8)))
-	{
-		return -1;
-	}
+	const cbtScalar degenerateTol = cbtScalar(1e-8);
 #else
-	if (signd * signd < (cbtScalar(1e-4) * cbtScalar(1e-4)))
+	const cbtScalar degenerateTol = cbtScalar(1e-4);
+#endif
+	cbtScalar relativeTol = SIMD_EPSILON * (d - a).length() * normal.length();
+	if (signd * signd < cbtMin(degenerateTol * degenerateTol, relativeTol * relativeTol))
 	{
 		//		printf("affine dependent/degenerate\n");//
 		return -1;
 	}
-#endif
 
 #endif
 	// Points on opposite sides if expression signs are opposite

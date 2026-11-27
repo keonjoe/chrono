@@ -268,12 +268,14 @@ int dBoxBox2(const cbtVector3& p1, const dMatrix3 R1,
 			 const cbtVector3& side1, const cbtVector3& p2,
 			 const dMatrix3 R2, const cbtVector3& side2,
 			 cbtVector3& normal, cbtScalar* depth, int* return_code,
-			 int maxc, dContactGeom* /*contact*/, int /*skip*/, cbtDiscreteCollisionDetectorInterface::Result& output);
+			 int maxc, dContactGeom* /*contact*/, int /*skip*/, cbtDiscreteCollisionDetectorInterface::Result& output,
+			 cbtScalar offset1, cbtScalar offset2);
 int dBoxBox2(const cbtVector3& p1, const dMatrix3 R1,
 			 const cbtVector3& side1, const cbtVector3& p2,
 			 const dMatrix3 R2, const cbtVector3& side2,
 			 cbtVector3& normal, cbtScalar* depth, int* return_code,
-			 int maxc, dContactGeom* /*contact*/, int /*skip*/, cbtDiscreteCollisionDetectorInterface::Result& output)
+			 int maxc, dContactGeom* /*contact*/, int /*skip*/, cbtDiscreteCollisionDetectorInterface::Result& output,
+			 cbtScalar offset1, cbtScalar offset2)
 {
 	const cbtScalar fudge_factor = cbtScalar(1.05);
 	cbtVector3 p, pp, normalC(0.f, 0.f, 0.f);
@@ -425,6 +427,29 @@ int dBoxBox2(const cbtVector3& p1, const dMatrix3 R1,
 	}
 	*depth = -s;
 
+	/* ***CHRONO*** The separating axis is found with the boxes including their face offsets (see
+	cbtBoxShape::setFaceOffset), so that contacts are created within the offset distance, but the contact points are
+	generated on the boxes without the offsets: otherwise they lie on the faces extended by the offsets, outside the
+	boxes. The point on box 2 and the depth are reported with the offsets, as for other convex shapes inflated by an
+	offset that is removed along the normal. Without offsets nothing changes. */
+	const cbtScalar offsetSum = offset1 + offset2;
+	if (offsetSum > 0)
+	{
+		cbtScalar n1 = 0, n2 = 0;
+		for (j = 0; j < 3; j++)
+		{
+			n1 += cbtFabs(dDOT14(normal, R1 + j));
+			n2 += cbtFabs(dDOT14(normal, R2 + j));
+			A[j] = cbtMax(A[j] - offset1, cbtScalar(0));
+			B[j] = cbtMax(B[j] - offset2, cbtScalar(0));
+		}
+		// the offsets add offset * sum_j |normal . axis_j| to the extent of each box along the normal
+		*depth -= offset1 * n1 + offset2 * n2;
+	}
+	auto addPoint = [&](const cbtVector3& pointOnB, cbtScalar distance) {
+		output.addContactPoint(-normal, pointOnB - normal * offset2, distance - offsetSum);
+	};
+
 	// compute contact point(s)
 
 	if (code > 6)
@@ -466,9 +491,9 @@ int dBoxBox2(const cbtVector3& p1, const dMatrix3 R1,
 #ifdef USE_CENTER_POINT
 			for (i = 0; i < 3; i++)
 				pointInWorld[i] = (pa[i] + pb[i]) * cbtScalar(0.5);
-			output.addContactPoint(-normal, pointInWorld, -*depth);
+			addPoint(pointInWorld, -*depth);
 #else
-			output.addContactPoint(-normal, pb, -*depth);
+			addPoint(pb, -*depth);
 
 #endif  //
 			*return_code = code;
@@ -645,7 +670,7 @@ int dBoxBox2(const cbtVector3& p1, const dMatrix3 R1,
 		for (i = 0; i < 3; i++) point[cnum * 3 + i] =
 									center[i] + k1 * Rb[i * 4 + a1] + k2 * Rb[i * 4 + a2];
 		dep[cnum] = Sa[codeN] - dDOT(normal2, point + cnum * 3);
-		if (dep[cnum] >= 0)
+		if (dep[cnum] >= -offsetSum) /* ***CHRONO*** keep the points within the offsets */
 		{
 			ret[cnum * 2] = ret[j * 2];
 			ret[cnum * 2 + 1] = ret[j * 2 + 1];
@@ -668,7 +693,7 @@ int dBoxBox2(const cbtVector3& p1, const dMatrix3 R1,
 				cbtVector3 pointInWorld;
 				for (i = 0; i < 3; i++)
 					pointInWorld[i] = point[j * 3 + i] + pa[i];
-				output.addContactPoint(-normal, pointInWorld, -dep[j]);
+				addPoint(pointInWorld, -dep[j]);
 			}
 		}
 		else
@@ -680,7 +705,7 @@ int dBoxBox2(const cbtVector3& p1, const dMatrix3 R1,
 				for (i = 0; i < 3; i++)
 					pointInWorld[i] = point[j * 3 + i] + pa[i] - normal[i] * dep[j];
 				//pointInWorld[i] = point[j*3+i] + pa[i];
-				output.addContactPoint(-normal, pointInWorld, -dep[j]);
+				addPoint(pointInWorld, -dep[j]);
 			}
 		}
 	}
@@ -713,11 +738,11 @@ int dBoxBox2(const cbtVector3& p1, const dMatrix3 R1,
 				posInWorld[i] = point[iret[j] * 3 + i] + pa[i];
 			if (code < 4)
 			{
-				output.addContactPoint(-normal, posInWorld, -dep[iret[j]]);
+				addPoint(posInWorld, -dep[iret[j]]);
 			}
 			else
 			{
-				output.addContactPoint(-normal, posInWorld - normal * dep[iret[j]], -dep[iret[j]]);
+				addPoint(posInWorld - normal * dep[iret[j]], -dep[iret[j]]);
 			}
 		}
 		cnum = maxc;
@@ -763,5 +788,5 @@ void cbtBoxBoxDetector::getClosestPoints(const ClosestPointInput& input, Result&
 			 2.f * m_box2->getHalfExtentsWithMargin(),
 			 normal, &depth, &return_code,
 			 maxc, contact, skip,
-			 output);
+			 output, m_box1->getFaceOffset(), m_box2->getFaceOffset());
 }

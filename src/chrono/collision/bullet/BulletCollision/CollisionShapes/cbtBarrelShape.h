@@ -15,6 +15,8 @@
 /// vertical direction, i.e. the axis parallel to Y) and R_hor (for the axis that
 /// is perpendicular to Y). Also, the solid is clamped with two discs on the top and
 /// the bottom, at levels Y_low and Y_high.
+/// The shape can be inflated by a uniform outward offset of its surface. The collision margin is taken from the inside
+/// of the shape: the shape including its margin is the (inflated) barrel.
 class cbtBarrelShape : public cbtConvexInternalShape {
   private:
     cbtScalar Y_low;
@@ -22,9 +24,10 @@ class cbtBarrelShape : public cbtConvexInternalShape {
     cbtScalar R_vert;
     cbtScalar R_hor;
     cbtScalar R_offset;
+    cbtScalar m_offset;
 
   public:
-    cbtBarrelShape(cbtScalar sY_low, cbtScalar sY_high, cbtScalar sR_vert, cbtScalar sR_hor, cbtScalar sR_offset);
+    cbtBarrelShape(cbtScalar sY_low, cbtScalar sY_high, cbtScalar sR_vert, cbtScalar sR_hor, cbtScalar sR_offset, cbtScalar offset = cbtScalar(0));
 
     /// CollisionShape Interface
     virtual void calculateLocalInertia(cbtScalar mass, cbtVector3& inertia) const;
@@ -45,6 +48,11 @@ class cbtBarrelShape : public cbtConvexInternalShape {
     cbtScalar getR_vert() const { return R_vert; }
     cbtScalar getR_hor() const { return R_hor; }
     cbtScalar getR_offset() const { return R_offset; }
+    cbtScalar getOffset() const { return m_offset; }
+
+  private:
+    /// Radius of the lathed ellipse, offset inward by s, at the level y.
+    cbtScalar getCoreRadius(cbtScalar y, cbtScalar s) const;
 };
 
 #endif

@@ -1,6 +1,9 @@
 set(TESTS
     utest_COLL_bullet_utils
     utest_COLL_bullet_rayhit
+    utest_COLL_bullet_ellipsoid
+    utest_COLL_bullet_box_box
+    utest_COLL_bullet_long_shapes
     utest_COLL_rounded_shapes
 )
 

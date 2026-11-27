@@ -926,6 +926,7 @@ set(Chrono_collision_bullet_SOURCES
     collision/bullet/BulletCollision/CollisionDispatch/cbtInternalEdgeUtility.cpp
     collision/bullet/BulletCollision/CollisionDispatch/cbtHashedSimplePairCache.cpp
     collision/bullet/BulletCollision/CollisionShapes/cbtBarrelShape.cpp
+    collision/bullet/BulletCollision/CollisionShapes/cbtEllipsoidShape.cpp
     collision/bullet/BulletCollision/CollisionShapes/cbt2DShape.cpp
     collision/bullet/BulletCollision/CollisionShapes/cbtChTriangleShape.cpp
     collision/bullet/BulletCollision/CollisionShapes/cbtSegmentShape.cpp

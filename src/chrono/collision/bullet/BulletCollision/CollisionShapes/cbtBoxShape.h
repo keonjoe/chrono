@@ -286,6 +286,18 @@ public:
 				cbtAssert(0);
 		}
 	}
+
+	/* ***CHRONO*** */
+	/// Set the outward offset of the faces that is included in the half extents (e.g. a collision envelope).
+	/// The box-box collision detector clips the contact region with the faces without this offset, so that the
+	/// contact points lie within the faces of the box.
+	void setFaceOffset(cbtScalar offset) { m_faceOffset = offset; }
+
+	/// Return the outward offset of the faces that is included in the half extents.
+	cbtScalar getFaceOffset() const { return m_faceOffset; }
+
+private:
+	cbtScalar m_faceOffset = 0;
 };
 
 #endif  //BT_OBB_BOX_MINKOWSKI_H

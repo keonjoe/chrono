@@ -26,6 +26,7 @@
 #include "chrono/collision/bullet/BulletCollision/CollisionShapes/cbtRoundedCylinderShape.h"
 #include "chrono/collision/bullet/BulletCollision/CollisionShapes/cbtRoundedBoxShape.h"
 #include "chrono/collision/bullet/BulletCollision/CollisionShapes/cbtBarrelShape.h"
+#include "chrono/collision/bullet/BulletCollision/CollisionShapes/cbtEllipsoidShape.h"
 #include "chrono/collision/bullet/BulletCollision/CollisionShapes/cbtChTriangleShape.h"
 #include "chrono/collision/bullet/BulletCollision/CollisionShapes/cbtPointShape.h"
 #include "chrono/collision/bullet/BulletCollision/CollisionShapes/cbtSegmentShape.h"
@@ -122,12 +123,15 @@ void ChCollisionModelBullet::Populate() {
             case ChCollisionShape::Type::ELLIPSOID: {
                 auto shape_ell = std::static_pointer_cast<ChCollisionShapeEllipsoid>(shape);
                 auto haxes = shape_ell->GetSemiaxes();
-                auto bt_axes = cbtVector3CH(haxes + ChVector3d(envelope));
-                cbtScalar rad = 1.0;
-                cbtVector3 spos(0, 0, 0);
-                auto bt_shape = chrono_types::make_shared<cbtMultiSphereShape>(&spos, &rad, 1);
-                bt_shape->setLocalScaling(bt_axes);
-                bt_shape->setMargin((cbtScalar)std::min((double)full_margin, 0.9 * std::min(std::min(haxes.x(), haxes.y()), haxes.z())));
+                // The envelope is an outward offset of the ellipsoid surface (as for the other shapes, it is removed
+                // again along the contact normal when contacts are reported). The safe margin must not exceed the
+                // smallest radius of curvature of the surface, so that the core shape without margin stays exact.
+                double min_haxis = std::min(std::min(haxes.x(), haxes.y()), haxes.z());
+                double max_haxis = std::max(std::max(haxes.x(), haxes.y()), haxes.z());
+                double min_curv_radius = min_haxis * min_haxis / max_haxis;
+                model->SetSafeMargin(std::min((double)safe_margin, 0.9 * min_curv_radius));
+                auto bt_shape = chrono_types::make_shared<cbtEllipsoidShape>(cbtVector3CH(haxes), (cbtScalar)envelope);
+                bt_shape->setMargin((cbtScalar)(envelope + model->GetSafeMargin()));
                 InjectShape(shape, bt_shape, frame);
                 break;
             }
@@ -136,7 +140,9 @@ void ChCollisionModelBullet::Populate() {
                 auto len = shape_box->GetLengths();
                 model->SetSafeMargin(std::min((double)safe_margin, 0.1 * std::min(std::min(len.x(), len.y()), len.z())));
                 auto bt_shape = chrono_types::make_shared<cbtBoxShape>(cbtVector3CH(len / 2 + ChVector3d(envelope)));
-                bt_shape->setMargin((cbtScalar)full_margin);
+                bt_shape->setMargin((cbtScalar)(envelope + model->GetSafeMargin()));
+                // box-box contact points are clipped with the faces of the box, not with the faces moved by the envelope
+                bt_shape->setFaceOffset((cbtScalar)envelope);
                 InjectShape(shape, bt_shape, frame);
                 break;
             }
@@ -147,7 +153,7 @@ void ChCollisionModelBullet::Populate() {
                 model->SetSafeMargin(std::min((double)safe_margin, 0.2 * std::min(radius, height / 2)));
                 ChVector3d size(radius, radius, height / 2);
                 auto bt_shape = chrono_types::make_shared<cbtCylinderShapeZ>(cbtVector3CH(size + ChVector3d(envelope)));
-                bt_shape->setMargin((cbtScalar)full_margin);
+                bt_shape->setMargin((cbtScalar)(envelope + model->GetSafeMargin()));
                 InjectShape(shape, bt_shape, frame);
                 break;
             }
@@ -167,9 +173,11 @@ void ChCollisionModelBullet::Populate() {
                 auto height = shape_rcyl->GetHeight();
                 auto radius = shape_rcyl->GetRadius();
                 auto sradius = shape_rcyl->GetSweepRadius();
-                model->SetSafeMargin(std::min((double)safe_margin, 0.2 * std::min(radius, height / 2)));
+                // the safe margin rounds the edges in addition to the sweep radius: keep the core cylinder non-empty
+                double rcyl_dim = std::min(radius, height / 2);
+                model->SetSafeMargin(std::max(0.0, std::min({(double)safe_margin, 0.2 * rcyl_dim, rcyl_dim - sradius})));
                 auto bt_shape = chrono_types::make_shared<cbtRoundedCylinderShape>((cbtScalar)(radius + envelope), (cbtScalar)(height / 2 + envelope), sradius);
-                bt_shape->setMargin((cbtScalar)full_margin);
+                bt_shape->setMargin((cbtScalar)(envelope + model->GetSafeMargin()));
                 InjectShape(shape, bt_shape, frame);
                 break;
             }
@@ -177,9 +185,11 @@ void ChCollisionModelBullet::Populate() {
                 auto shape_rbox = std::static_pointer_cast<ChCollisionShapeRoundedBox>(shape);
                 auto len = shape_rbox->GetLengths();
                 auto sradius = shape_rbox->GetSweepRadius();
-                model->SetSafeMargin(std::min((double)safe_margin, 0.1 * std::min(std::min(len.x(), len.y()), len.z())));
+                // the safe margin rounds the edges in addition to the sweep radius: keep the core box non-empty
+                double rbox_len = std::min(std::min(len.x(), len.y()), len.z());
+                model->SetSafeMargin(std::max(0.0, std::min({(double)safe_margin, 0.1 * rbox_len, rbox_len / 2 - sradius})));
                 auto bt_shape = chrono_types::make_shared<cbtRoundedBoxShape>(cbtVector3CH(len / 2 + ChVector3d(envelope)), sradius);
-                bt_shape->setMargin((cbtScalar)full_margin);
+                bt_shape->setMargin((cbtScalar)(envelope + model->GetSafeMargin()));
                 InjectShape(shape, bt_shape, frame);
                 break;
             }
@@ -190,14 +200,14 @@ void ChCollisionModelBullet::Populate() {
                 auto axis_vert = shape_barrel->axis_vert;
                 auto axis_hor = shape_barrel->axis_hor;
                 auto R_offset = shape_barrel->R_offset;
-                model->SetSafeMargin(std::min((double)safe_margin, 0.15 * std::min(std::min(axis_vert / 2, axis_hor / 2), Y_high - Y_low)));
-                auto sY_low = (cbtScalar)(Y_low - envelope);
-                auto sY_high = (cbtScalar)(Y_high + envelope);
-                auto sR_vert = (cbtScalar)(axis_vert / 2 + envelope);
-                auto sR_hor = (cbtScalar)(axis_hor / 2 + envelope);
-                auto sR_offset = (cbtScalar)(R_offset);
-                auto bt_shape = chrono_types::make_shared<cbtBarrelShape>(sY_low, sY_high, sR_vert, sR_hor, sR_offset);
-                bt_shape->setMargin((cbtScalar)full_margin);
+                // the safe margin must not exceed the smallest radius of curvature of the lathed ellipse
+                double min_axis = std::min(axis_vert, axis_hor) / 2;
+                double max_axis = std::max(axis_vert, axis_hor) / 2;
+                model->SetSafeMargin(std::min({(double)safe_margin, 0.15 * std::min(min_axis, Y_high - Y_low), 0.9 * min_axis * min_axis / max_axis}));
+                // the envelope is an outward offset of the barrel surface
+                auto bt_shape = chrono_types::make_shared<cbtBarrelShape>((cbtScalar)Y_low, (cbtScalar)Y_high, (cbtScalar)(axis_vert / 2), (cbtScalar)(axis_hor / 2),
+                                                                          (cbtScalar)R_offset, (cbtScalar)envelope);
+                bt_shape->setMargin((cbtScalar)(envelope + model->GetSafeMargin()));
                 InjectShape(shape, bt_shape, frame);
                 break;
             }
