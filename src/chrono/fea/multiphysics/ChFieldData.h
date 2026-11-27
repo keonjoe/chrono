@@ -223,6 +223,7 @@ public:
         mvariables(T_nstates) {
         state.setZero();
         state_dt.setZero();
+        state_dtdt.setZero();
         F.setZero();
         mvariables.GetMass().setZero();
     }
@@ -266,8 +267,10 @@ public:
         state_dt = v.segment(off_v, T_nstates);
     }
 
-    virtual void DataIntStateGatherAcceleration(const unsigned int off_a, ChStateDelta& a) override {}
-    virtual void DataIntStateScatterAcceleration(const unsigned int off_a, const ChStateDelta& a) override {}
+    // The acceleration-level value (the time derivative of StateDt) is stored for the integrators that use it as part
+    // of the state, such as Newmark and HHT. It is zero until an integrator scatters it.
+    virtual void DataIntStateGatherAcceleration(const unsigned int off_a, ChStateDelta& a) override { a.segment(off_a, T_nstates) = state_dtdt; }
+    virtual void DataIntStateScatterAcceleration(const unsigned int off_a, const ChStateDelta& a) override { state_dtdt = a.segment(off_a, T_nstates); }
 
     virtual void DataIntLoadResidual_F(const unsigned int off, ChVectorDynamic<>& R, const double c) override {
         R.segment(off, T_nstates) += c * F;
@@ -308,6 +311,7 @@ private:
     ChVariablesGeneric mvariables;
     ChVectorN<double, T_nstates> state;
     ChVectorN<double, T_nstates> state_dt;
+    ChVectorN<double, T_nstates> state_dtdt;
     ChVectorN<double, T_nstates> F;
 };
 

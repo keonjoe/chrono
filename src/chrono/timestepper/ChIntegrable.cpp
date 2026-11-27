@@ -51,7 +51,7 @@ void ChIntegrable::StateIncrement(ChState& y_new, const ChState& y, const ChStat
 void ChIntegrableIIorder::StateSetup(ChState& x, ChStateDelta& v, ChStateDelta& a) {
     x.resize(GetNumCoordsPosLevel());
     v.resize(GetNumCoordsVelLevel());
-    a.resize(GetNumCoordsVelLevel());
+    a.setZero(GetNumCoordsVelLevel(), a.GetIntegrable());  // defined value for items that do not store an acceleration
 }
 
 bool ChIntegrableIIorder::StateSolveA(ChStateDelta& Dvdt,        // result: computed a for a=dv/dt
