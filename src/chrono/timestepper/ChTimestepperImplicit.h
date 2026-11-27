@@ -225,6 +225,29 @@ class ChApi ChTimestepperImplicit : public ChTimestepper {
     /// Calculate error weights based on the given state and tolerances.
     void CalcErrorWeights(const ChVectorDynamic<>& x, double rtol, double atol, ChVectorDynamic<>& ewt);
 
+    /// Predict the new velocities for the Newton iteration of a step whose new positions are x_new = x0 + hx*v_new, with
+    /// one linearized step solved for v_new itself (not for a correction of a guess):
+    ///    [ ca*M + cv*dF/dv + cx*dF/dx   Cq' ] [ v_new   ] = [ R + hv*f(x0, v) + cv*dF/dv*v ]
+    ///    [ Cq                            0  ] [ -hv*l   ]   [ -C(x0, T)/hx                 ]
+    /// where R is the known part of the right-hand side and the matrix factors are those of the Newton iteration, with
+    /// cv = -hv and cx = -hv*hx. This is f linearized about (x0, v), so the prediction is exact for linear systems,
+    /// including first-order fields whose unknown is stored at the velocity level (e.g. temperature).
+    /// Constraints without position-level residual (e.g. gearboxes, or shafts coupled to body rotations, which allow
+    /// drifting) are thus enforced at the velocity level, Cq*v_new = 0, even if the velocities at the beginning of the
+    /// step violate them; the Newton corrections then keep Cq*Dv = 0 for them. The multipliers l are discarded. The
+    /// last matrix factorization is reused, unless a solver setup is pending.
+    void PredictVelocity(ChIntegrableIIorder* integrable,
+                         const ChState& x0,
+                         const ChStateDelta& v,
+                         double T,
+                         ChVectorDynamic<>& R,
+                         double hv,
+                         double hx,
+                         double ca,
+                         double cv,
+                         double cx,
+                         ChStateDelta& v_new);
+
     JacobianUpdate jacobian_update_method;  ///< Jacobian update strategy
     bool call_setup;                        ///< should the solver's Setup function be called?
     bool call_analyze;                      ///< should the solver's Setup analyze phase be called?

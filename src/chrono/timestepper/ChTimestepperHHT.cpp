@@ -87,20 +87,26 @@ void ChTimestepperHHT::FinalizeStep() {
 
 // Prepare attempting a step of size h (assuming a converged state at the current time t):
 // - Initialize residual vector with terms at current time
-// - Obtain a prediction at T+h for Newton using extrapolation from solution at current time.
-// - If no step size control, start with zero acceleration guess (previous step not guaranteed to have converged)
+// - Obtain a prediction at T+h for Newton with a linearized step from the solution at current time
 // - Set the error weight vectors (using solution at current time)
 // - Set the factor converting the constraint residual Qc = C/(beta*h^2) to the constraint violation C
 void ChTimestepperHHT::PrepareStep() {
     Qc_scale = beta * h * h;
-    if (step_control)
-        Anew = A;
-    Vnew = V + Anew * h;
-    Xnew = X + Vnew * h + Anew * (h * h);
     integrable->LoadResidual_F(Rold, -alpha / (1.0 + alpha));       // -alpha/(1.0+alpha) * f_old
     integrable->LoadConstraintJacobians();                          // Cq at the state at time T
     integrable->LoadResidual_CqL(Rold, L, -alpha / (1.0 + alpha));  // -alpha/(1.0+alpha) * Cq'*l_old
     CalcErrorWeights(A, reltol, abstolS, ewtS);
+
+    // Predict the new state with a linearized step as warm start. With v0 = v_old + h*(1-gamma)*a_old, the new state is
+    // v_new = v0 + h*gamma*a_new and x_new = x0 + h*beta/gamma*v_new, x0 = x_old + h*v_old + h^2*(0.5-beta)*a_old -
+    // h*beta/gamma*v0. Multiplied by h*gamma, the dynamics equation has the matrix of the Newton iteration.
+    ChStateDelta v0 = V + A * (h * (1.0 - gamma));
+    ChStateDelta dx0 = V * h + A * (h * h * (0.5 - beta)) - v0 * (h * beta / gamma);
+    ChVectorDynamic<> R_pred = Rold * (h * gamma);
+    integrable->LoadResidual_Mv(R_pred, v0, 1 / (1 + alpha));  // R = 1/(1+alpha)*M*v0 + h*gamma*Rold
+    PredictVelocity(integrable, X + dx0, V, T + h, R_pred, h * gamma, h * beta / gamma, 1 / (1 + alpha), -h * gamma, -h * h * beta, Vnew);
+    Anew = (Vnew - v0) * (1.0 / (h * gamma));
+    Xnew = X + V * h + A * (h * h * (0.5 - beta)) + Anew * (h * h * beta);
 
     Lnew = L;
 

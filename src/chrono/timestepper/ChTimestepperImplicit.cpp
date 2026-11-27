@@ -395,6 +395,54 @@ void ChTimestepperImplicit::CalcErrorWeights(const ChVectorDynamic<>& x,
     ewt = (rtol * x.cwiseAbs() + atol).cwiseInverse();
 }
 
+// Linearizing f(x0 + hx*v_new, v_new) about (x0, v) and C(x0 + hx*v_new, T) about x0 gives a linear system for v_new:
+//    f(x0 + hx*v_new, v_new) ~ f(x0, v) + hx*dF/dx*v_new + dF/dv*(v_new - v),
+// so the right-hand side contains -hv*dF/dv*v = cv*dF/dv*v (all callers use cv = -hv). This term is essential for
+// first-order fields whose unknown is stored at the velocity level (e.g. temperature, with dF/dv the conduction
+// matrix), and it makes the prediction exact for a linear system of ODEs. The predicted multipliers are not used as
+// starting point: the Newton matrix does not contain the geometric stiffness of the constraints, d(Cq'*l)/dq,
+// which is exact for an iteration that starts from l = 0.
+void ChTimestepperImplicit::PredictVelocity(ChIntegrableIIorder* integrable,
+                                            const ChState& x0,
+                                            const ChStateDelta& v,
+                                            double T,
+                                            ChVectorDynamic<>& R,
+                                            double hv,
+                                            double hx,
+                                            double ca,
+                                            double cv,
+                                            double cx,
+                                            ChStateDelta& v_new) {
+    integrable->StateScatter(x0, v, T, UpdateFlags::UPDATE_ALL_NO_VISUAL);  // state -> system
+    integrable->LoadResidual_F(R, hv);                                      // R += hv*f(x0, v)
+    integrable->LoadResidual_dFdv(R, v, cv);                                // R += cv*dF/dv*v
+
+    // LoadResidual_dFdv leaves the damping matrices in the KRM blocks. The solve below loads the matrix with the factors
+    // (ca, cv, cx) whenever it calls the solver setup or the solver needs the matrix; otherwise a direct solver reuses
+    // its last factorization.
+    ChVectorDynamic<> Qc_pred(integrable->GetNumConstraints());
+    Qc_pred.setZero();
+    integrable->LoadConstraint_C(Qc_pred, 1.0 / hx, 0.0, Qc_do_clamp, Qc_clamping);  // Qc = C/hx (sign flipped later)
+
+    v_new = v;
+    ChVectorDynamic<> Dl_pred(integrable->GetNumConstraints());
+    Dl_pred.setZero();
+    integrable->StateSolveCorrection(       //
+        v_new, Dl_pred, R, Qc_pred,         //
+        ca, cv, cx,                         // factors for M, dF/dv, dF/dx
+        x0, v, T,                           // not used here (scatter = false)
+        false,                              // do not scatter
+        UpdateFlags::UPDATE_ALL_NO_VISUAL,  // no need for full update, since no scatter
+        call_setup,                         // reuse the last factorization unless a setup is pending
+        call_analyze                        // if true, call the solver's Setup analyze phase
+    );
+    if (call_setup) {
+        call_analyze = false;
+        num_step_setups++;
+    }
+    num_step_solves++;
+}
+
 std::string ChTimestepperImplicit::GetJacobianUpdateMethodAsString(JacobianUpdate jacobian_update) {
     switch (jacobian_update) {
         case JacobianUpdate::EVERY_ITERATION:
@@ -434,10 +482,13 @@ void ChTimestepperEulerImplicit::OnAdvance(double dt) {
 
     integrable->StateGather(X, V, T);  // state <- system
 
-    // Extrapolate a prediction as warm start
+    // Predict v_new with a linearized step, x_new = X + dt*v_new, as warm start
+    R.setZero();
+    integrable->LoadResidual_Mv(R, V, 1.0);  // R = M*v_old
+    PredictVelocity(integrable, X, V, T + dt, R, dt, dt, 1.0, -dt, -dt * dt, Vnew);
+    call_setup = false;
 
-    Xnew = X + V * dt;
-    Vnew = V;  //+ A()*dt;
+    Xnew = X + Vnew * dt;
 
     // Use Newton iteration to solve for v_new
     //
@@ -767,11 +818,6 @@ void ChTimestepperTrapezoidal::OnAdvance(double dt) {
     integrable->StateGather(X, V, T);  // state <- system
     // integrable->StateGatherReactions(L); // <- system  assume l_old = 0;  otherwise DAE gives oscillatory reactions
 
-    // extrapolate a prediction as a warm start
-
-    Xnew = X + V * dt;
-    Vnew = V;  // +A()*dt;
-
     // Use Newton iteration to solve for v_new
     //
     // [M-dt/2*dF/dv-dt^2/4*dF/dx  Cq'] [Ds      ] = [M*(v_old - v_new) + dt/2(f_old + f_new  + Cq*l_old + Cq*l_new)]
@@ -780,6 +826,13 @@ void ChTimestepperTrapezoidal::OnAdvance(double dt) {
     integrable->LoadResidual_F(Rold, dt * 0.5);  // dt/2*f_old
     integrable->LoadResidual_Mv(Rold, V, 1.0);   // M*v_old
     // integrable->LoadResidual_CqL(Rold, L, dt*0.5); // dt/2*l_old   assume L_old = 0
+
+    // Predict v_new with a linearized step, x_new = X + dt/2*v_old + dt/2*v_new, as warm start
+    R = Rold;
+    PredictVelocity(integrable, X + V * (dt * 0.5), V, T + dt, R, dt * 0.5, dt * 0.5, 1.0, -dt * 0.5, -dt * dt * 0.25, Vnew);
+    call_setup = false;
+
+    Xnew = X + ((Vnew + V) * (dt * 0.5));
 
     bool converged = false;
     unsigned int iteration;
@@ -1005,10 +1058,17 @@ void ChTimestepperNewmark::OnAdvance(double dt) {
     integrable->StateGather(X, V, T);  // state <- system
     integrable->StateGatherAcceleration(A);
 
-    // extrapolate a prediction as a warm start
+    // Predict v_new with a linearized step as warm start. With v0 = v_old + dt*(1-gamma)*a_old, the new state is
+    // v_new = v0 + dt*gamma*a_new and x_new = x0 + dt*beta/gamma*v_new, x0 = x_old + dt*v_old + dt^2*(0.5-beta)*a_old -
+    // dt*beta/gamma*v0.
+    ChStateDelta v0 = V + A * (dt * (1.0 - gamma));
+    ChStateDelta dx0 = V * dt + A * (dt * dt * (0.5 - beta)) - v0 * (dt * beta / gamma);
+    R.setZero();
+    integrable->LoadResidual_Mv(R, v0, 1.0);  // R = M*v0
+    PredictVelocity(integrable, X + dx0, V, T + dt, R, dt * gamma, dt * beta / gamma, 1.0, -dt * gamma, -dt * dt * beta, Vnew);
 
-    Vnew = V;
-    Xnew = X + Vnew * dt;
+    Anew = (Vnew - v0) * (1.0 / (dt * gamma));
+    Xnew = X + V * dt + A * (dt * dt * (0.5 - beta)) + Anew * (dt * dt * beta);
 
     // Use Newton to solve for a_new
     //
