@@ -80,6 +80,9 @@ class CH_VEHICLE_API ChEngineShafts : public ChEngine {
                              double motorshaft_speed             ///< input transmission speed
                              ) override;
 
+    /// Set the initial angular velocity of the motorshaft.
+    virtual void InitializeMotorshaftSpeed(double motorshaft_speed) override { m_motorshaft->SetPosDt(motorshaft_speed); }
+
     /// Advance the state of this engine system by the specified time step.
     /// Since the state of a EngineShafts is advanced as part of the vehicle state, this function does nothing.
     virtual void Advance(double step) override {}

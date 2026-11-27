@@ -54,6 +54,11 @@ class CH_VEHICLE_API ChEngine : public ChPart {
     /// Initialize this engine.
     virtual void Initialize(std::shared_ptr<ChChassis> chassis);
 
+    /// Set the initial engine speed to the given motorshaft speed (as imposed by the transmission).
+    /// This function is called after initialization, so that the engine starts at a speed consistent with the rest of
+    /// the drivetrain. This default implementation does nothing.
+    virtual void InitializeMotorshaftSpeed(double motorshaft_speed) {}
+
     /// Update the engine system at the current time.
     /// The engine is provided the current driver throttle input, a value in the range [0,1].
     /// The motorshaft speed represents the input to the engine from the transmission system.

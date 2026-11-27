@@ -54,6 +54,11 @@ class CH_VEHICLE_API WheeledVehicle : public ChWheeledVehicle {
     virtual double GetMinTurningRadius() const override { return m_turn_radius; }
     virtual double GetMaxSteeringAngle() const override { return m_steer_angle; }
 
+    /// Set the initial angular velocities of the wheels (default: 0).
+    /// The vector must contain two values (left and right wheel) for each axle, ordered from front to back. This function
+    /// must be called before Initialize.
+    void SetInitWheelAngVel(const std::vector<double>& omega);
+
     virtual void Initialize(const ChCoordsys<>& chassisPos, double chassisFwdVel = 0) override;
 
   private:
@@ -87,6 +92,8 @@ class CH_VEHICLE_API WheeledVehicle : public ChWheeledVehicle {
 
     double m_turn_radius;  // minimum turning radius
     double m_steer_angle;  // maximum steering angle
+
+    std::vector<double> m_omega;  // initial wheel angular velocities (if empty, all zero)
 };
 
 /// @} vehicle_wheeled

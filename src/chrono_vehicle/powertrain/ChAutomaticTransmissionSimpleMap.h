@@ -91,6 +91,9 @@ class CH_VEHICLE_API ChAutomaticTransmissionSimpleMap : public ChAutomaticTransm
                              double driveshaft_speed             ///< input driveline speed
                              ) override;
 
+    /// Select the initial gear (automatic shift mode) and set the motorshaft speed consistent with the driveshaft speed.
+    virtual void InitializeShaftSpeeds(double driveshaft_speed) override;
+
     /// Advance the state of this transmission system by the specified time step.
     /// This function does nothing for this simplified model.
     virtual void Advance(double step) override {}

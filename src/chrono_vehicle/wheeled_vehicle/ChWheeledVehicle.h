@@ -187,6 +187,14 @@ class CH_VEHICLE_API ChWheeledVehicle : public ChVehicle {
                         VisualizationType tire_vis = VisualizationType::PRIMITIVES,
                         ChTire::CollisionType tire_coll = ChTire::CollisionType::SINGLE_POINT);
 
+    /// Initialize this vehicle at the specified global location and orientation.
+    /// Derived classes must invoke this base class implementation after they initialize all their subsystem.
+    /// For a non-zero initial forward velocity, all vehicle bodies are given the velocity of the chassis, so that the
+    /// vehicle starts in a rigid-body translation. Body angular velocities (e.g., initial wheel spin) are not changed.
+    virtual void Initialize(const ChCoordsys<>& chassisPos,  ///< [in] initial global position and orientation
+                            double chassisFwdVel = 0         ///< [in] initial chassis forward velocity
+                            ) override;
+
     /// Calculate total vehicle mass.
     /// This function is called at the end of the vehicle initialization, but can also be called explicitly.
     virtual void InitializeInertiaProperties() override final;
@@ -268,6 +276,9 @@ class CH_VEHICLE_API ChWheeledVehicle : public ChVehicle {
     /// Calculate current vehicle inertia properties.
     /// This function is called at the end of each vehicle state advance.
     virtual void UpdateInertiaProperties() override final;
+
+    /// Return the current speed of the driveline input shaft (0 if there is no initialized driveline).
+    virtual double GetDriveshaftSpeed() const override;
 
     /// Initialize output for the wheeled vehicle subsystems.
     virtual void InitializeOutput() override;

@@ -169,7 +169,7 @@ void ChVehicle::Initialize(const ChCoordsys<>& chassisPos, double chassisFwdVel)
 
 void ChVehicle::InitializePowertrain(std::shared_ptr<ChPowertrainAssembly> powertrain) {
     m_powertrain_assembly = powertrain;
-    m_powertrain_assembly->Initialize(m_chassis);
+    m_powertrain_assembly->Initialize(m_chassis, GetDriveshaftSpeed());
 }
 
 // -----------------------------------------------------------------------------

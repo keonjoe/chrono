@@ -102,6 +102,17 @@ void ChShaftsDriveline2WD::Initialize(std::shared_ptr<ChChassis> chassis,
     m_clutch->SetModulation(0);
     sys->Add(m_clutch);
 
+    // Initialize shaft angular velocities based on the initial wheel angular velocities.
+    // Note that the conical gear imposes w_differentialbox = t * w_driveshaft, with t its (negative) transmission ratio.
+    double omega_axle_L = axles[m_driven_axles[0]]->m_suspension->GetAxleSpeed(LEFT);
+    double omega_axle_R = axles[m_driven_axles[0]]->m_suspension->GetAxleSpeed(RIGHT);
+
+    double omega_differentialbox = 0.5 * (omega_axle_L + omega_axle_R);
+    m_differentialbox->SetPosDt(omega_differentialbox);
+
+    double omega_driveshaft = omega_differentialbox / m_conicalgear->GetTransmissionRatio();
+    m_driveshaft->SetPosDt(omega_driveshaft);
+
     ChPart::Initialize();
 }
 

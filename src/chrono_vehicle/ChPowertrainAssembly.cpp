@@ -22,9 +22,13 @@
 namespace chrono {
 namespace vehicle {
 
-void ChPowertrainAssembly::Initialize(std::shared_ptr<ChChassis> chassis) {
+void ChPowertrainAssembly::Initialize(std::shared_ptr<ChChassis> chassis, double driveshaft_speed) {
     m_engine->Initialize(chassis);
     m_transmission->Initialize(chassis);
+
+    // Start the transmission and the engine at speeds consistent with the driveline
+    m_transmission->InitializeShaftSpeeds(driveshaft_speed);
+    m_engine->InitializeMotorshaftSpeed(m_transmission->GetOutputMotorshaftSpeed());
 }
 
 void ChPowertrainAssembly::Synchronize(double time, const DriverInputs& driver_inputs, double driveshaft_speed) {

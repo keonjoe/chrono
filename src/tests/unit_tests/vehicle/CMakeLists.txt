@@ -15,6 +15,14 @@ list(APPEND LIBS Chrono_vehicle)
 message(STATUS "Add unit test programs for VEHICLE module")
 build_utests(YES "${TESTS}" "vehicle" "${LIBS}" "${UTILS}")
 
+# Tests that use the vehicle models
+if(CH_ENABLE_MODULE_VEHICLE_MODELS)
+  set(MODEL_TESTS
+      utest_VEH_initial_speed
+  )
+  build_utests(YES "${MODEL_TESTS}" "vehicle" "${LIBS};ChronoModels_vehicle" "${UTILS}")
+endif()
+
 # Run the SCM backend tests a second time with every GPU hidden. A library built with GPU support must then
 # select the CPU at run time, including when the GPU backend is requested explicitly. SCM_UTEST_EXPECT_NO_GPU=1
 # makes the test fail if a GPU is still visible.

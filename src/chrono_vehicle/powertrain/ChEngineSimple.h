@@ -67,6 +67,9 @@ class CH_VEHICLE_API ChEngineSimple : public ChEngine {
                              double motorshaft_speed             ///< input transmission speed
                              ) override;
 
+    /// Set the initial engine speed.
+    virtual void InitializeMotorshaftSpeed(double motorshaft_speed) override { m_motor_speed = motorshaft_speed; }
+
     /// Advance the state of this engine system by the specified time step.
     /// This function does nothing for this simplified engine model.
     virtual void Advance(double step) override {}

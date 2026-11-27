@@ -118,6 +118,15 @@ void ChManualTransmissionShafts::Synchronize(double time,
     }
 }
 
+void ChManualTransmissionShafts::InitializeShaftSpeeds(double driveshaft_speed) {
+    // The gearbox imposes driveshaft speed = gear ratio x clutch shaft speed. With the clutch engaged, the motorshaft
+    // spins with the clutch shaft.
+    double clutchshaft_speed = driveshaft_speed / m_current_gear_ratio;
+    m_driveshaft->SetPosDt(driveshaft_speed);
+    m_clutchShaft->SetPosDt(clutchshaft_speed);
+    m_motorshaft->SetPosDt(clutchshaft_speed);
+}
+
 double ChManualTransmissionShafts::GetOutputDriveshaftTorque() const {
     return m_gears->GetReaction2();
 }

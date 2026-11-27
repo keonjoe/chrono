@@ -50,7 +50,11 @@ class CH_VEHICLE_API ChPowertrainAssembly {
     double GetOutputTorque() const { return m_transmission->GetOutputDriveshaftTorque(); }
 
     /// Initialize this powertrain system by attaching it to an existing vehicle chassis.
-    void Initialize(std::shared_ptr<ChChassis> chassis);
+    /// The transmission and engine shafts are given initial speeds consistent with the specified speed of the
+    /// driveline input shaft (driveshaft) and the current gear.
+    void Initialize(std::shared_ptr<ChChassis> chassis,  ///< associated chassis subsystem
+                    double driveshaft_speed = 0          ///< initial driveshaft angular speed
+    );
 
     /// Synchronize the state of this powertrain system at the current time.
     void Synchronize(double time,                        ///< current time

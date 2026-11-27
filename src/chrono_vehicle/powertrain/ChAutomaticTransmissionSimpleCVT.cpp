@@ -92,6 +92,12 @@ void ChAutomaticTransmissionSimpleCVT::Synchronize(double time,
     m_driveshaft_torque = sgn * m_efficiency * motorshaft_torque / m_current_gear_ratio;
 }
 
+void ChAutomaticTransmissionSimpleCVT::InitializeShaftSpeeds(double driveshaft_speed) {
+    // Gear ratio and motorshaft speed as calculated in Synchronize
+    m_current_gear_ratio = m_cvt_gear_ratios.GetVal(std::abs(driveshaft_speed));
+    m_motorshaft_speed = std::abs(driveshaft_speed) / m_current_gear_ratio;
+}
+
 void ChAutomaticTransmissionSimpleCVT::SetGearRatios(std::vector<double>& fwd, double& rev) {
     // we must set dummy values for these unused values to pass the assertions in debug mode
     rev = -1.0;

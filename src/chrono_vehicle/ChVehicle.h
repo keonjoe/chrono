@@ -243,7 +243,9 @@ class CH_VEHICLE_API ChVehicle {
     );
 
     /// Initialize the given powertrain assembly and associate it to this vehicle.
-    /// The powertrain is initialized by connecting it to this vehicle's chassis and driveline shaft.
+    /// The powertrain is initialized by connecting it to this vehicle's chassis and driveline shaft. If the driveline is
+    /// already initialized, the powertrain shafts are given speeds consistent with the current driveshaft speed (e.g.,
+    /// for a vehicle initialized with a non-zero forward velocity and wheel angular velocities).
     void InitializePowertrain(std::shared_ptr<ChPowertrainAssembly> powertrain);
 
     /// Calculate total vehicle mass from subsystems.
@@ -336,6 +338,10 @@ class CH_VEHICLE_API ChVehicle {
     /// Calculate current vehicle inertia properties from subsystems.
     /// This function is called at the end of each vehicle state advance.
     virtual void UpdateInertiaProperties() = 0;
+
+    /// Return the current speed of the driveline input shaft (connected to the transmission output).
+    /// This value is used to initialize the powertrain shaft speeds. The default implementation returns 0.
+    virtual double GetDriveshaftSpeed() const { return 0; }
 
     /// Utility function for testing if any subsystem in a list generates output.
     template <typename T>

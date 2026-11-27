@@ -71,6 +71,9 @@ class CH_VEHICLE_API ChEngineSimpleMap : public ChEngine {
                              double motorshaft_speed             ///< input transmission speed
                              ) override;
 
+    /// Set the initial engine speed (clamped to the specified maximum, as in Synchronize).
+    virtual void InitializeMotorshaftSpeed(double motorshaft_speed) override { m_motor_speed = ChClamp(motorshaft_speed, 0.0, GetMaxEngineSpeed()); }
+
     /// Advance the state of this engine system by the specified time step.
     /// This function does nothing for this simplified engine model.
     virtual void Advance(double step) override {}

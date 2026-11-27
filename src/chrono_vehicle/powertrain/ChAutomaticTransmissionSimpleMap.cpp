@@ -58,6 +58,17 @@ void ChAutomaticTransmissionSimpleMap::Synchronize(double time,
     m_driveshaft_torque = motorshaft_torque / m_current_gear_ratio;
 }
 
+void ChAutomaticTransmissionSimpleMap::InitializeShaftSpeeds(double driveshaft_speed) {
+    // In automatic shift mode, start in the gear that the shift points select for this driveshaft speed
+    if (m_shift_mode == ShiftMode::AUTOMATIC && m_drive_mode == DriveMode::FORWARD && m_current_gear > 0) {
+        while (m_current_gear < GetMaxGear() && std::abs(driveshaft_speed) / m_current_gear_ratio > m_shift_points[m_current_gear - 1].second)
+            SetGear(m_current_gear + 1);
+    }
+
+    // Motorshaft speed as calculated in Synchronize
+    m_motorshaft_speed = std::abs(driveshaft_speed) / m_current_gear_ratio;
+}
+
 // -----------------------------------------------------------------------------
 
 void ChAutomaticTransmissionSimpleMap::PopulateComponentList() {}

@@ -109,6 +109,13 @@ class CH_VEHICLE_API ChTransmission : public ChPart {
     /// engine and driveline subsystems. A derived class override must first call this base class implementation.
     virtual void Initialize(std::shared_ptr<ChChassis> chassis);
 
+    /// Set the initial speeds of the transmission shafts, consistent with the given driveshaft speed (as imposed by the
+    /// driveline) and the current gear. An automatic transmission in automatic shift mode first selects the gear given
+    /// by its shift schedule for this speed. The torque converter or clutch (if any) is assumed locked, so that the
+    /// output motorshaft speed is the driveshaft speed divided by the gear ratio. This function is called after
+    /// initialization. This default implementation does nothing.
+    virtual void InitializeShaftSpeeds(double driveshaft_speed) {}
+
     /// Update the transmission system at the current time.
     /// The motorshaft torque represents the input to the transmission from the engine system.
     /// The driveshaft speed represents the input to the transmission from the driveline system.

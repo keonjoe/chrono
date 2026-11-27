@@ -332,6 +332,12 @@ void WheeledVehicle::Create(const std::string& filename, bool create_powertrain,
 
 // -----------------------------------------------------------------------------
 
+void WheeledVehicle::SetInitWheelAngVel(const std::vector<double>& omega) {
+    if (omega.size() != 2 * static_cast<size_t>(m_num_axles))
+        throw std::invalid_argument("WheeledVehicle::SetInitWheelAngVel: expected two values per axle");
+    m_omega = omega;
+}
+
 void WheeledVehicle::Initialize(const ChCoordsys<>& chassisPos, double chassisFwdVel) {
     // Initialize the chassis subsystem.
     m_chassis->Initialize(this, chassisPos, chassisFwdVel, VehicleCollisionFamily::CHASSIS_FAMILY);
@@ -366,8 +372,9 @@ void WheeledVehicle::Initialize(const ChCoordsys<>& chassisPos, double chassisFw
         std::shared_ptr<ChChassis> chassis = (ch_index == -1) ? m_chassis : m_chassis_rear[ch_index];
         std::shared_ptr<ChSubchassis> subchassis = (subch_index == -1) ? nullptr : m_subchassis[subch_index];
         std::shared_ptr<ChSteering> steering = (str_index == -1) ? nullptr : m_steerings[str_index];
-        m_axles[i]->Initialize(chassis, subchassis, steering, m_susp_locations[i], m_arb_locations[i],
-                               m_wheel_separations[i]);
+        double omega_left = m_omega.empty() ? 0.0 : m_omega[2 * i];
+        double omega_right = m_omega.empty() ? 0.0 : m_omega[2 * i + 1];
+        m_axles[i]->Initialize(chassis, subchassis, steering, m_susp_locations[i], m_arb_locations[i], m_wheel_separations[i], omega_left, omega_right);
     }
 
     // Loop again over all axles and initialize tires (if present)

@@ -32,6 +32,29 @@ ChWheeledVehicle::ChWheeledVehicle(const std::string& name, ChContactMethod cont
 
 ChWheeledVehicle::ChWheeledVehicle(const std::string& name, ChSystem* system) : ChVehicle(name, system), m_parking_on(false) {}
 
+void ChWheeledVehicle::Initialize(const ChCoordsys<>& chassisPos, double chassisFwdVel) {
+    // The chassis initialization sets the forward velocity of the chassis body only. Impose the same translational
+    // velocity on all other vehicle bodies (suspension, steering, wheels, rear chassis, etc.), consistent with the
+    // vehicle joints, but keep their angular velocities (initial wheel spin). Vehicle bodies are identified by their
+    // vehicle tag (not all subsystem templates include all their bodies in their component lists).
+    if (chassisFwdVel != 0 && !m_chassis->IsFixed()) {
+        ChVector3d vel = m_chassis->GetBody()->GetPosDt();
+        for (auto& body : m_system->GetBodies()) {
+            int tag = body->GetTag();
+            if (VehicleObjTag::ExtractVehicleTag(tag) == GetVehicleTag() && VehicleObjTag::ExtractPartTag(tag) >= VehiclePartTag::CHASSIS)
+                body->SetPosDt(vel);
+        }
+        for (auto& body : GetBodyList())
+            body->SetPosDt(vel);
+    }
+
+    ChVehicle::Initialize(chassisPos, chassisFwdVel);
+}
+
+double ChWheeledVehicle::GetDriveshaftSpeed() const {
+    return (m_driveline && m_driveline->IsInitialized()) ? m_driveline->GetOutputDriveshaftSpeed() : 0;
+}
+
 // Initialize a tire and attach it to one of the vehicle's wheels.
 void ChWheeledVehicle::InitializeTire(std::shared_ptr<ChTire> tire, std::shared_ptr<ChWheel> wheel, VisualizationType tire_vis, ChTire::CollisionType tire_coll) {
     wheel->m_tire = tire;

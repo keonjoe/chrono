@@ -93,6 +93,9 @@ class CH_VEHICLE_API ChManualTransmissionShafts : public ChManualTransmission {
                              double driveshaft_speed             ///< input driveline speed
                              ) override;
 
+    /// Set the initial shaft speeds consistent with the given driveshaft speed and the current gear.
+    virtual void InitializeShaftSpeeds(double driveshaft_speed) override;
+
     /// Advance the state of this transmission system by the specified time step.
     /// No-op, since the state of a AutomaticTransmissionShafts is advanced as part of the vehicle state.
     virtual void Advance(double step) override {}

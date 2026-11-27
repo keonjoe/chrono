@@ -152,6 +152,21 @@ void ChAutomaticTransmissionShafts::Synchronize(double time,
     }
 }
 
+void ChAutomaticTransmissionShafts::InitializeShaftSpeeds(double driveshaft_speed) {
+    // In automatic shift mode, start in the gear that the shift schedule selects for this driveshaft speed
+    if (m_shift_mode == ShiftMode::AUTOMATIC && m_drive_mode == DriveMode::FORWARD) {
+        while (m_current_gear < GetMaxGear() && driveshaft_speed / m_current_gear_ratio > m_upshift_speed)
+            SetGear(m_current_gear + 1);
+    }
+
+    // The gearbox imposes driveshaft speed = gear ratio x in-gear shaft speed. With the torque converter at a speed
+    // ratio of 1, the motorshaft (torque converter input) spins with the in-gear shaft (torque converter output).
+    double ingear_speed = driveshaft_speed / m_current_gear_ratio;
+    m_driveshaft->SetPosDt(driveshaft_speed);
+    m_shaft_ingear->SetPosDt(ingear_speed);
+    m_motorshaft->SetPosDt(ingear_speed);
+}
+
 double ChAutomaticTransmissionShafts::GetOutputDriveshaftTorque() const {
     return m_gears->GetReaction2();
 }
